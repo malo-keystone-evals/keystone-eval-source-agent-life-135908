@@ -1,0 +1,19 @@
+name: Keystone build
+run-name: "[KEYSTONE_BUILD] ${{ github.sha }}"
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          mode="$(tr -d '[:space:]' < BUILD_MODE 2>/dev/null || echo ok)"
+          echo "building ${GITHUB_SHA} (mode: ${mode})"
+          case "$mode" in
+            fail) echo "failing on purpose"; exit 1 ;;
+            slow) sleep 300 ;;
+          esac

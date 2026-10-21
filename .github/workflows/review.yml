@@ -1,0 +1,18 @@
+name: Review
+on:
+  workflow_dispatch:
+    inputs:
+      pr: { required: true }
+      event: { required: true, description: "APPROVE or REQUEST_CHANGES" }
+permissions:
+  pull-requests: write
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flag=--approve
+          [ "${{ inputs.event }}" = "REQUEST_CHANGES" ] && flag="--request-changes"
+          gh pr review "${{ inputs.pr }}" -R "${{ github.repository }}" $flag -b "Rehearsal review"
