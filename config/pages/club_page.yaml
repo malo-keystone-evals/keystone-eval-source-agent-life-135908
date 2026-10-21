@@ -1,0 +1,62 @@
+# The club record page — also the public entry point named by clubs.sharing
+# (page_name: club_page), so a ShareToken resolves a visitor straight here.
+version: 4
+name: club_page
+route:
+  section: community
+  path: /clubs/:id/:tab?
+  roles:
+    - admin
+    - librarian
+    - patron
+  order: 4
+  hidden: true
+content:
+  kind: record
+  model_name: clubs
+  # The clubs listing this page sits under. A ShareToken visitor reaches the
+  # same route holding no role at all, and the listing's own `route.roles`
+  # gate the arrow the way they gate the sidebar — so they get the record and
+  # no way up out of it.
+  parent_page: clubs_listing
+  tabs:
+    - kind: blocks
+      label: Overview
+      title: Overview
+      value: overview
+      blocks:
+        - kind: properties
+          omit: null
+          # Every property this viewer may already edit, edited in place.
+          # `meeting_format` is a union, which no field renders, so it stays
+          # in the read-only shell under `*` without being denied.
+          editable:
+            - "*"
+    - kind: table
+      label: Events
+      value: events
+      model_name: events
+      # The listing these rows stand in for, whose record actions they take —
+      # and whose table-view `default_sort` this tab would open in, had it not
+      # declared one of its own below.
+      listing_page: events_listing
+      # Declared, so it beats what `events_listing` would lend: the listing
+      # walks the calendar forward (`starts_at asc`) because a reader planning
+      # ahead wants the next event first, while a club's own page is read to
+      # see what the club has been doing, so it leads with the latest.
+      default_sort:
+        column: starts_at
+        direction: desc
+      # `in` rather than `eq`: over a string `eq` resolves to a date comparison,
+      # which queries the same rows but reads as a date filter on the listing a
+      # link out of this tab carries it to.
+      filters:
+        - propertyName: club_id
+          operator: in
+          valueAExpr: .id
+          valueBExpr: null
+          not: false
+    - kind: lifecycle
+      label: History
+      title: History
+      value: history

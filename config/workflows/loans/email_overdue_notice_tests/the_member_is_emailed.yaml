@@ -1,0 +1,49 @@
+# The member_contact Function answers with the address; the email goes there,
+# naming the book from the loan the Item Context carried across the call.
+version: 3
+name: the_member_is_emailed
+description: An overdue loan emails its member, at their account's address, naming the book.
+now: 2026-06-02T00:00:00Z
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+          first_name: Alice
+          last_name: Reader
+    members:
+      - $alias: m1
+        fields:
+          user_id: u1
+          display_name: Alice R.
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    loans:
+      - $alias: l1
+        fields:
+          book_id: b1
+          member_id: m1
+          due_on: "2026-06-01"
+          status: active
+trigger:
+  kind: on_enter
+  record: l1
+  status:
+    from: active
+    to: overdue
+expect:
+  emails:
+    notify:
+      - to: alice@example.com
+        params:
+          member_name: Alice R.
+          book_title: Dune

@@ -1,0 +1,27 @@
+# Labels for the authors.nationality enum.
+name: author_nationalities
+items:
+  - kind: option
+    value: american
+    text: American
+  - kind: option
+    value: british
+    text: British
+  - kind: option
+    value: australian
+    text: Australian
+  - kind: option
+    value: canadian
+    text: Canadian
+  - kind: option
+    value: irish
+    text: Irish
+  - kind: option
+    value: nigerian
+    text: Nigerian
+  - kind: option
+    value: japanese
+    text: Japanese
+  - kind: option
+    value: other
+    text: Other

@@ -1,0 +1,26 @@
+kind: page
+framework: react
+name: reports
+# A whole-page React plugin driven by URL parameters. `route_params` declares the
+# segments the plugin receives (from reports_page's `/reports/:year?/:quarter?`
+# route), typed and delivered as props.route_params. `previews:` maps named
+# preview states — a central Scenario plus the mount context (here the route
+# params) — that the studio renders the plugin against.
+input:
+  route_params:
+    year:
+      kind: number
+      integer: true
+    quarter:
+      kind: string
+      enum:
+        - Q1
+        - Q2
+        - Q3
+        - Q4
+previews:
+  q3_2026:
+    scenario: library_admin
+    route_params:
+      year: 2026
+      quarter: Q3

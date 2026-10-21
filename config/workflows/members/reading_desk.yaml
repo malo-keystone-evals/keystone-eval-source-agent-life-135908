@@ -1,0 +1,335 @@
+version: 3
+run_as: user
+trigger:
+  kind: endpoint
+  path: reading_desk
+  method: post
+  auth:
+    roles:
+      - patron
+      - admin
+  # The canonical two-field chat schema (D29). The framework fixes exactly two
+  # of these, and a workflow any chat placement names must declare the one its
+  # thread shape selects — so the default composer can post fixed fields with
+  # zero derivation and never parse an Easel expression to find a field name.
+  input_schema:
+    kind: object
+    properties:
+      message:
+        kind: string
+        required: true
+      conversation_id:
+        kind: string
+        required: true
+      file:
+        kind: string
+        format: uuid
+  # The framework default is 30s, which is a sensible ceiling for a
+  # request/response endpoint and far too short for this one: a sandbox turn
+  # acquires a box, then runs a command per step, each a round trip to E2B —
+  # ten of those with a plot at the end is minutes, not seconds. Hitting the
+  # ceiling ends the stream with "The endpoint run timed out" and throws away an
+  # answer that was still being written, which is the worst of both.
+  #
+  # A deployment fronted by nginx needs `proxy_read_timeout` raised to match;
+  # its own default is 60s and it will cut the stream first.
+  timeout_seconds: 300
+  response: stream
+thread:
+  user: true
+  # Many conversations per member, not one running transcript: the client mints
+  # a uuid for a new one and echoes the thread's `key` to continue one. The row
+  # is resolved-or-created at dispatch, so there is deliberately no "create
+  # conversation" call for the sidebar to make.
+  id: ".input.conversation_id"
+  ledger:
+    input: ".input.message"
+  # Name each conversation after its first exchange, so the sidebar reads as a
+  # list of topics rather than of times (ADR-0115). The cheap profile: a title
+  # is a handful of words.
+  title:
+    model:
+      profile: { kind: static, name: nano }
+      credential: { kind: system, name: open_ai_api }
+description: >-
+  A member's private reading assistant, backed by an [[Agent Sandbox]] rather
+  than by hand-written tools. It reads the catalogue and the member's own
+  borrowing through the `keystone` CLI, may renew a loan and write or reword
+  their reviews on their behalf, and remembers their taste between visits.
+#
+# ── Why this is a sandbox and not a set of tools ──────────────────────────────
+#
+# This workflow used to declare four plugin tools — `search_catalogue`,
+# `my_loans`, `renew_loan`, `remember_taste` — one per thing a member might ask
+# for. That shape has a ceiling: every new question needs a new tool, written,
+# bundled and deployed, and a member's questions are open-ended ("what have I got
+# out that's overdue, and is the sequel in?"). Answering that with fixed tools
+# means either one tool per phrasing or one tool with a query language inside it,
+# which is a worse `keystone query`.
+#
+# A sandbox inverts it. The agent gets a shell with the `keystone` CLI, the
+# [[Sandbox Briefing]] teaches it the surface, and the *authority* is what config
+# pins down. Adding a capability stops being a code change.
+#
+# What the sandbox deliberately does NOT replace is the two `state` tools below.
+# Durable memory is agent state, not records, and a box cannot write it — which is
+# the point (ADR-0072): a field a tool can write is a field the model can set.
+# ── The named box (D6) ────────────────────────────────────────────────────────
+#
+# The desk's box is *declared* rather than derived. Before this existed, a
+# `sandbox` tool's box was keyed off its node's State Binding, which worked but
+# left the box's identity implicit — readable only by knowing that rule — and
+# gave a non-agentic node no way to address the same box at all.
+#
+# Declaring it here buys two things. The identity is stated where a reader looks
+# for it, beside `agent_states:`; and the box becomes addressable by name, so a
+# `sandbox_exec` node could prepare it if this workflow ever needed one. (It does
+# not, and that is deliberate — see the note on the tool below.)
+#
+# `egress:` is deliberately absent, which is not the same as unset-and-unknown:
+# this box talks to the Keystone server and to nothing else. The server is not an
+# egress entry and cannot be declared away — a box that could not reach it could
+# not spend its [[Sandbox Token]], so it is the floor the whole design stands on
+# rather than a hole an author opens. An entry here would be a claim that the
+# agent calls the open internet, which it does not.
+#
+# `credentials:` is absent for the sharper reason: there is nothing this box
+# should hold. The member's authority arrives as the [[Sandbox Token]], minted
+# per turn and revoked at settle. A System Credential here would be a standing
+# secret in a box a model writes shell in.
+#
+# `template: reading-desk` installs nothing. It ships the desk's skills from
+# `config/sandbox_templates/reading-desk/` into the box's home (ADR-0120). The
+# briefing lists them, but a line in a tool description did not make the model
+# look, so the prompt below says *when* to read them. The skill's content stays
+# in the repo beside the template, where it can be reviewed and changed alone.
+sandboxes:
+  library:
+    template: reading-desk
+nodes:
+  - id: desk
+    title: Talk to the member
+    action:
+      kind: agentic_loop
+      model:
+        # `mini-vision` so the desk can look (ADR-0114): a vision profile gives
+        # the agent the built-in `view_file` tool — a book's cover by the file
+        # id its record carries, or a chart it drew in its box, by path.
+        profile:
+          kind: static
+          name: mini-vision
+        credential:
+          kind: system
+          name: open_ai_api
+      # Deliberately about the *job* and never about the tooling: the sandbox
+      # describes itself through the framework-generated [[Sandbox Briefing]],
+      # which is resolved from the same authority as the token and so cannot
+      # promise an action the mask dropped. A prompt that also explained the CLI
+      # would be a second, un-generated copy — free to drift, and wrong the first
+      # time anyone narrowed the mask.
+      system_prompt: |
+        You are the reading desk assistant at a small public library. You are
+        talking to one member, and this conversation is only ever with them.
+
+        What you remember about them from previous visits:
+        - Notes on their taste: {.taste_notes.to_string()}
+        - Books you have already recommended: {.last_recommended.to_string()} —
+          do not recommend these again unless they ask about one directly.
+
+        How to be useful here:
+        - Look things up before you answer. Never recommend a book, quote a due
+          date or claim something is available without having read it — a
+          plausible invention is worse than "let me check".
+        - You can renew a loan yourself when they have clearly asked for a
+          specific one. Confirm *which* book first if there is any ambiguity, and
+          say what the new due date is afterwards.
+        - You can write a review for them, and reword one they have already
+          written. Because it goes out under their name, read the wording back
+          and get an explicit yes before you save it — and say so plainly if
+          they ask you to change a rating, which you cannot do once it is set.
+        - When they tell you something durable about their taste, record it with
+          `note_taste`. A genre they love, an author they cannot finish. Not
+          passing remarks about one book.
+        - The library has a house style for recommendations. Before you suggest a
+          book, read `~/skills/INDEX.md` in your sandbox and follow the skill it
+          names.
+        - When you settle on a recommendation, record it with `recommend` as well
+          as saying it, so you do not repeat yourself on their next visit.
+        - If they ask what a cover looks like, look at it with `view_file` before
+          you describe it, and describe only what you can see. The same goes for
+          any chart you draw for them: look at it before you tell them what it
+          shows.
+        - When they attach a file, it is already in your sandbox under
+          ~/uploads/ — the note beside their message names the path. Open it
+          with a command; to see an image or a PDF, call `view_file` on that
+          path.
+
+        Be brief and warm: two or three sentences unless they asked for a list.
+        Finish with prose addressed to the member — everything a tool told you is
+        for you, not for them, and they cannot see any of it.
+      state:
+        name: desk
+      input_schema:
+        kind: object
+        properties:
+          message:
+            kind: string
+            required: true
+      force_tool_call: false
+      termination:
+        max_iterations: 8
+      tools:
+        - kind: sandbox
+          name: library
+          # Runs in the box declared at the workflow root, by name. One line, and
+          # it is what stops the box's identity being derived from this node's
+          # State Binding.
+          #
+          # There is deliberately **no** `sandbox_exec` node preparing it. This
+          # is a streamed request/response path, so a setup step would cost an
+          # E2B round trip on every message the member sends — and there is
+          # nothing the desk needs prepared: the agent's first act is a query,
+          # not a checkout. `books/isbn_audit` is where a prepared box earns its
+          # keep, on a manual trigger where the setup is real work.
+          sandbox: library
+          # No `template:`, and now it would be an error rather than a
+          # preference: the declaration owns the box's image, so a tool naming
+          # one would be stating an image for a box it does not own
+          # (`workflow/sandbox-template-with-named-box`). The image is the
+          # `library` declaration's `reading-desk`.
+          #
+          # No `credentials:` either. The box declares none, and the omission is
+          # the point: a credential a *model's* commands can hold is a separate
+          # decision from one a setup step holds, and this workflow makes
+          # neither.
+          #
+          # ── The [[Permission Mask]] ────────────────────────────────────────
+          #
+          # Narrower than it looks, and the layering is the point. The mask picks
+          # *models*; the member's own policies still pick the rows, the
+          # properties and the statuses inside them, because this workflow is
+          # `run_as: user` and a [[Sandbox Token]] can only ever attenuate what
+          # the caller already holds.
+          #
+          # So "their own loans" is written nowhere: `loans`' `member` policy
+          # reaches rows through `loans.member_id → members.user_id`, and the
+          # agent inherits exactly that. It cannot read another member's
+          # borrowing even though `loans` is in the list.
+          permissions:
+            # The catalogue, and their own borrowing history.
+            #
+            # `members` is here for one reason, and it is the kind of thing only
+            # live testing finds: `reviews.member_id` is a *required* property
+            # pointing at `members`, so a mask granting `create: [reviews]`
+            # without `view: [members]` describes a create that can never
+            # succeed — the id it must supply is undiscoverable from inside the
+            # box. The agent duly tried its own *user* id (the one `keystone
+            # session` prints), took a foreign-key violation, and spent its whole
+            # iteration budget looking for a model it could not see.
+            #
+            # A mask must be closed over the foreign keys its writes require.
+            # Nothing checks that today.
+            view: [books, authors, loans, members, reviews]
+            # The writes the agent makes itself. Pushing out a due date is
+            # low-stakes, reversible, and something the member could do by hand —
+            # and the `member` policy narrows it further than this line can, to
+            # `due_on`/`renewals` on an `active` or `overdue` loan.
+            #
+            # `reviews` is here to show the *narrowing* rather than the write. A
+            # member's own policy permits `create` with the full field set but
+            # `update` with only `headline`/`body`/`recommended`/`tags` — so the
+            # agent can write a review and reword it, and cannot restate its
+            # rating afterwards however it is asked. That limit is nowhere in
+            # this block: the mask picks models, the member's policy picks the
+            # properties, and the local role's join picks whose reviews.
+            update: [loans, reviews]
+            create: [reviews]
+            # `delete` and `transition` stay absent. Taking a review down is
+            # moderation, which is `reviews/moderate_review`'s job and not a
+            # thing a member's assistant should reach.
+          # `chat_block` only. `launch_modal` is deliberately not here: a modal
+          # is a *human-in-the-loop write*, and the framework models it today as
+          # a capability separate from the write it stands in for — so a tool
+          # that may not `create` cannot offer a create modal either, and the
+          # offer this workflow used to advertise never reached the box. Merging
+          # the two — an edit whose execution mode is "ask the human first" — is
+          # a framework change, not a config one. Until then this desk writes
+          # directly, within the narrow scope above, and says what it is doing.
+          ui: [chat_block]
+          # No `activity:` block, deliberately. The default label for a sandbox
+          # call is the model's own `summary` argument ("Checking overdue loans"),
+          # which is the whole of D31: a reader watching a chat sees the work
+          # named in their language, not a shell command and not the word
+          # "library". An authored label here would override that with something
+          # fixed, and every call would read the same.
+        - kind: state
+          name: note_taste
+          description: Record something durable about this member's taste — a genre they love, an author they cannot finish. Not for passing remarks about a single book.
+          input:
+            kind: object
+            properties:
+              note:
+                kind: string
+                required: true
+          # A list rather than a string built up by concatenation. Easel has no
+          # conditional and no null test, so appending to a string field means
+          # `concat` against a value that is null on the first call — which fails
+          # the turn with "concat arguments must be strings". Accumulating in a
+          # list has no first-call special case.
+          state_update:
+            taste_notes: ".taste_notes.concat($input.note)"
+          message: Noted, and I'll remember that next time.
+          activity:
+            label: Remembering that
+        - kind: state
+          name: recommend
+          description: Record a book you are recommending, so you do not recommend it again on a later visit. Call this as well as saying it in your reply, not instead of.
+          input:
+            kind: object
+            properties:
+              title:
+                kind: string
+                required: true
+              why:
+                kind: string
+                required: true
+          state_update:
+            last_recommended: ".last_recommended.concat($input.title)"
+          message: Recorded the recommendation of {$input.title}.
+          activity:
+            label: Recommending {$input.title}
+      narrate:
+        text: fragments
+        errors: visible
+connections:
+  - from_id: entry
+    to_id: desk
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: ".input.message"
+          to: ".message"
+# The member's durable memory — one [[State Instance]] per conversation, keyed by
+# the thread, surviving every run. Deliberately *not* something the sandbox can
+# reach: a box writes records, and this is the agent's own memory.
+#
+# Three fields collapsed into one list. This used to be a `preferences` string
+# plus `genres_liked` and `genres_avoided` arrays, which needed a tool per field
+# and could not be written by one tool that decided which field to use — Easel has
+# no conditional, so "append to liked *or* avoided" is not expressible. One list
+# of notes says the same thing, reads back into the prompt as prose, and takes one
+# tool.
+agent_states:
+  desk:
+    schema:
+      kind: object
+      properties:
+        taste_notes:
+          kind: array
+          items:
+            kind: string
+        last_recommended:
+          kind: array
+          items:
+            kind: string

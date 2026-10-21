@@ -1,0 +1,9 @@
+version: 3
+name: three stars is neutral
+trigger:
+  kind: call
+  input:
+    rating: 3
+expect:
+  returns:
+    tone: neutral

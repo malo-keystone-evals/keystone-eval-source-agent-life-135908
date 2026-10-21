@@ -1,0 +1,37 @@
+# A read-only `data`-subject modal. It is bound to the shared `address` schema
+# (not a spec record) and simply presents its fields — the same schema the
+# events.venue property references.
+version: 3
+name: venue_details
+title: Venue address
+icon_id: fa/solid/location-dot
+content:
+  kind: form
+  blocks:
+    - kind: text_field
+      label: Line 1
+      path_key: line1
+    - kind: text_field
+      label: Line 2
+      path_key: line2
+    - kind: side_by_side
+      primary:
+        kind: text_field
+        label: City
+        path_key: city
+      secondary:
+        kind: text_field
+        label: State
+        path_key: state
+    - kind: side_by_side
+      primary:
+        kind: text_field
+        label: Postcode
+        path_key: postcode
+      secondary:
+        kind: text_field
+        label: Country
+        path_key: country
+subject:
+  kind: data
+  schema_name: address

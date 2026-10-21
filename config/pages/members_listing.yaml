@@ -1,0 +1,104 @@
+# Members listing. The page-level add action opens the multi-step onboarding
+# WIZARD (onboard_member) rather than a flat form.
+version: 4
+name: members_listing
+title: Members
+icon_id: fa/solid/address-card
+route:
+  section: community
+  path: /members
+  roles:
+    - admin
+    - librarian
+  order: 1
+content:
+  kind: listing
+  model_name: members
+  views:
+    - kind: table
+      default_sort:
+        column: display_name
+        direction: asc
+      columns:
+        # The Status Column, addressed by the second `columns:` key that names
+        # no property (ADR-0095). It is a generated column, so six of the seven
+        # keys apply — everything but `renderer`, the chip being drawn from the
+        # record's own status rather than from a property value. Here the header
+        # reads "Standing" instead of the default, the column lays out at 160
+        # rather than the chip's own 140, and `position` moves it out of the
+        # second slot it opens in to sit after the tier it qualifies.
+        status:
+          label: Standing
+          width: 160
+          position: 3
+        membership_tier:
+          label: Tier
+        active_loan_count:
+          label: On loan
+  page_actions:
+    add_modal: onboard_member
+  record_actions:
+    related_links:
+      - "*"
+    edit_modal: edit_member
+    record_page: member_page
+    show_status: true
+    modals:
+      - "*"
+    # ADR-0090's record-anchored Data Bindings: one single-record-or-nothing
+    # lookup, resolved against `{ record, user }` and joined to the context as
+    # `.last_loan` for every modal_actions entry below. Same shape as the
+    # dashboard's `data:` block, with the selected record added to what the
+    # query can see — and the same declaration-order scoping, so a second
+    # binding here could filter on `.last_loan` but not the other way round.
+    bindings:
+      last_loan:
+        spec: loans
+        query:
+          steps:
+            - kind: copy
+              from: object("filters", array(object("kind", "single", "property", "member_id", "not", false, "values", array(.record.id))), "sort_column", "borrowed_on", "sort_direction", "desc")
+              to: .
+    # Modal launchers anchored to the selected member. They render after the
+    # `modals:` entries above, in this order.
+    modal_actions:
+      # A NEW-RECORD modal reached from another model's page — the join point
+      # `modals:` cannot offer, which is why the label has to be written here
+      # rather than on the modal. The prefill reads the record (whose id is the
+      # borrower) and the binding (whose book is the one to reissue); both are
+      # fetched when the button is pressed, so the modal opens and suspends.
+      - modal: edit_loan
+        label: Lend that book again
+        icon_id: fa/solid/books
+        prefill:
+          steps:
+            - kind: copy
+              from: .record.id
+              to: .properties.member_id
+            - kind: copy
+              from: .last_loan.book_id
+              to: .properties.book_id
+        predicates:
+          # Tier 1: a property of the listed model. `phone` is on no column of
+          # this listing, so the predicate widens the listing's View Projection
+          # to fetch it — the button is right at first paint, never flipping.
+          - kind: disable
+            condition: .record.properties.phone
+            message: Add a contact number for this member before lending to them.
+          # Tier 2: a Data Binding, fetched when the panel opens. The button
+          # paints enabled and greys out when the lookup lands empty — the one
+          # jump ADR-0090 accepts, which is also why this may not be a `hide`.
+          - kind: disable
+            condition: .last_loan
+            message: This member has never borrowed a book, so there is nothing to reissue.
+      # A WORKFLOW modal, already reachable through `modals: ["*"]` — named
+      # again here to carry a gate the plain entry cannot. Nothing polices the
+      # overlap; the button simply renders twice.
+      - modal: suspend_member
+        label: Suspend this member
+        predicates:
+          # A `hide` may only read what the listing already has — `record` and
+          # `user` — because an item that vanished after a later fetch would
+          # move the buttons under the pointer.
+          - kind: hide
+            condition: .record.properties.user_id.neq(.user.id)

@@ -1,0 +1,33 @@
+version: 3
+run_as: system
+trigger:
+  kind: recurring
+  model_name: loans
+  schedule: "0 6 * * *"
+  filters:
+    - kind: single
+      property: status
+      values:
+        - active
+  dispatch_mode: per_record
+description: Each morning, move active loans past their due date to overdue.
+nodes:
+  - id: mark
+    title: Transition the loan to overdue
+    action:
+      kind: transition_model
+      model_name: loans
+connections:
+  - from_id: entry
+    to_id: mark
+    label: past its due date
+    filters:
+      - filter_selector: ".due_on.lt(today())"
+    transform:
+      steps:
+        - kind: copy
+          from: ".id"
+          to: ".id"
+        - kind: copy
+          from: overdue
+          to: ".status"

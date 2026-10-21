@@ -5,15 +5,17 @@ on:
     branches: [main]
   pull_request:
 jobs:
-  build:
+  changelog:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build
+        with:
+          fetch-depth: 0
+      - name: Every pull request records itself in CHANGELOG.md
+        if: github.event_name == 'pull_request'
         run: |
-          mode="$(tr -d '[:space:]' < BUILD_MODE 2>/dev/null || echo ok)"
-          echo "building ${GITHUB_SHA} (mode: ${mode})"
-          case "$mode" in
-            fail) echo "failing on purpose"; exit 1 ;;
-            slow) sleep 300 ;;
-          esac
+          if git diff --quiet "origin/${{ github.base_ref }}...HEAD" -- CHANGELOG.md; then
+            echo "::error file=CHANGELOG.md::This pull request does not touch CHANGELOG.md. Add one line under '# Changelog' saying what it changes, then push again."
+            exit 1
+          fi
+          echo "CHANGELOG.md has an entry."

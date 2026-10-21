@@ -1,0 +1,217 @@
+# A reading club. `clubs` is the showcase's sharing tour: it declares a `grant`
+# (public_view) and a `sharing` block, and its `admin` policy carries a `share`
+# permission — together these let staff mint a ShareToken that exposes one club's
+# page to the public without a login. `meeting_format` is a `union` schema
+# (in-person / online / hybrid), stored as jsonb and edited through a `branch`
+# form block in edit_club.
+version: 5
+initial_status: active
+name: clubs
+singular_name: club
+display_name: Reading Club
+description: >-
+  A group that meets to read a shared book. Can be published to the public via a
+  ShareToken scoped by the public_view grant.
+icon_id: fa/regular/users-rectangle
+nav_section: community
+identity:
+  title: name
+statuses:
+  - name: active
+  - name: archived
+policies:
+  - name: admin
+    description: Full control over clubs, including public sharing.
+    permissions:
+      - kind: view
+        properties:
+          - "*"
+        status:
+          - "*"
+        includes:
+          - "*"
+        lifecycle: true
+      - kind: create
+        properties:
+          - name
+          - description
+          - current_book_id
+          - capacity
+          - meeting_format
+          - logo_file_id
+        status:
+          - active
+        required_properties:
+          - name
+      - kind: update
+        properties:
+          - name
+          - description
+          - current_book_id
+          - capacity
+          - meeting_format
+          - logo_file_id
+        status:
+          - active
+      - kind: transition
+        from:
+          - active
+        to:
+          - archived
+      # Archiving through the workflow cancels the club's scheduled sessions
+      # too (clubs/archive_club).
+      - kind: workflow
+        workflows:
+          - archive_club
+        status:
+          - active
+      - kind: transition
+        from:
+          - archived
+        to:
+          - active
+      # Authorises minting a ShareToken (via the public_view grant) on an active
+      # club record.
+      - kind: share
+        status:
+          - active
+        grants:
+          - public_view
+  # The policy a ShareToken holder resolves to — read-only, no lifecycle.
+  - name: public
+    description: Public read-only view of a shared club.
+    permissions:
+      - kind: view
+        properties:
+          - name
+          - description
+          - current_book_id
+          - meeting_format
+        status:
+          - active
+        includes:
+          - current_book
+  - name: catalogue
+    description: Browse clubs from inside the app.
+    permissions:
+      - kind: view
+        properties:
+          - name
+          - description
+          - current_book_id
+          - current_book_title
+          - capacity
+          - meeting_format
+        status:
+          - active
+properties:
+  - name: name
+    description: The club's name.
+    schema:
+      kind: string
+      required: true
+    storage:
+      kind: standard
+      storage_type: character varying
+      not_null: true
+      index: standard
+  - name: description
+    description: What the club is about.
+    schema:
+      kind: string
+    filterable: false
+    storage:
+      kind: standard
+      storage_type: text
+  - name: current_book_id
+    description: The book the club is currently reading.
+    schema:
+      kind: string
+      format: uuid
+    foreign_key_to: books
+    storage:
+      kind: standard
+      storage_type: uuid
+      index: standard
+      on_delete: "set null"
+  - name: current_book_title
+    description: Title of the current book, cached from books.
+    schema:
+      kind: string
+    editable: false
+    filterable: false
+    storage:
+      kind: cached
+      index: standard
+      source:
+        foreign_key: current_book_id
+        property: title
+  - name: capacity
+    description: Maximum number of members.
+    schema:
+      kind: number
+      integer: true
+      min: 1
+    storage:
+      kind: standard
+      storage_type: integer
+  - name: meeting_format
+    description: How the club meets — in person, online, or hybrid.
+    schema:
+      kind: union
+      variants:
+        in_person:
+          location:
+            kind: string
+            required: true
+        online:
+          url:
+            kind: string
+            format: url
+            required: true
+        hybrid:
+          location:
+            kind: string
+            required: true
+          url:
+            kind: string
+            format: url
+            required: true
+      variant_descriptions:
+        in_person: Meets at a physical location.
+        online: Meets over a video call.
+        hybrid: Both a location and a video link.
+    # Variant labels for every surface that shows this union — the edit_club
+    # form's variant selector, and the listing/properties-block cells. Without
+    # this the cells title-case the variant name instead.
+    itemset: meeting_formats
+    filterable: false
+    sortable: false
+    storage:
+      kind: standard
+      storage_type: jsonb
+  - name: logo_file_id
+    description: The club's logo, printed in the header of its event worksheets.
+    # An ordinary uploaded File-Reference Property (ADR-0064) — the counterpart
+    # to `events.worksheet_file_id` next door, which a workflow writes. This one
+    # a person uploads through the `edit_club` modal's `file_upload_field`, and
+    # a document then reads it as a record image (D12): addressed by model,
+    # record id and property, never by a bare file id.
+    schema:
+      kind: string
+      format: uuid
+    filterable: false
+    foreign_key_to: file_uploads
+    storage:
+      kind: standard
+      storage_type: uuid
+      on_delete: restrict
+grants:
+  - name: public_view
+    description: Read-only public access to a single club and its current book.
+    policies:
+      - public
+sharing:
+  page_name: club_page
+  grant_names:
+    - public_view

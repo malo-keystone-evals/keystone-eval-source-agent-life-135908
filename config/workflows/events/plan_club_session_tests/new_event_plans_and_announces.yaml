@@ -1,0 +1,69 @@
+# AGENTIC THREADS DEMO (ADR-0067): both agent nodes bind the named
+# `club_session` state, so the announcer's scripted turn runs inside the
+# planner's conversation — the webhook body asserted below only comes out
+# right if the whole chain (fetch → plan → shared thread → announce → send)
+# held together. Cross-run continuation (the same club's next event reopening
+# the thread) can't be shown here — a Test Case is one trigger against a
+# fresh world — that behaviour is pinned by the engine's own thread tests.
+version: 3
+name: new_event_plans_and_announces
+description: Scheduling a club meeting plans the session in the club's thread and posts the announcement.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: admin@example.com
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    clubs:
+      - $alias: c1
+        fields:
+          name: Dune Readers
+          current_book_id: b1
+          status: active
+    events:
+      - $alias: e1
+        fields:
+          club_id: c1
+          title: "Session One: fear is the mind-killer"
+          starts_at: "2026-08-12T18:00:00Z"
+          status: scheduled
+external:
+  send: {}
+llm_turns:
+  plan:
+    - tool_calls:
+        - name: note_theme
+          args:
+            theme: fear_and_control
+    - tool_calls:
+        - name: submit_plan
+          args:
+            agenda: "1. The litany against fear — what does it actually do? 2. Paul's visions: gift or trap?"
+  announce:
+    - tool_calls:
+        - name: output
+          args:
+            value:
+              headline: "Dune Readers — Session One"
+              body: "Join us on 12 August to dig into fear and control in Dune, from the litany to Paul's visions."
+trigger:
+  kind: on_create
+  record: e1
+expect:
+  calls:
+    send:
+      - body:
+          event: club_session_planned
+          club: Dune Readers
+          headline: "Dune Readers — Session One"
+          body: "Join us on 12 August to dig into fear and control in Dune, from the litany to Paul's visions."

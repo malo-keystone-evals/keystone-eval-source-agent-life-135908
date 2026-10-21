@@ -1,0 +1,62 @@
+# The project's Branding — its visual identity as configuration. This is the
+# only route to a customised appearance for a Modern Project, which has no
+# project-owned frontend code to call the legacy `AppBuilder.branding()` from.
+version: 1
+
+# Shown in page titles and the browser tab. Absent ⇒ the framework default.
+name: Athenaeum
+
+# The Brand Marks, each naming a project-root-relative SVG file. The app config
+# carries the file's markup, not this path, so a mark renders through the same
+# inline-SVG seam a Legacy Project's `AppBuilder.branding()` call uses — which is
+# why the file has to be SVG.
+marks:
+  # The menu rail is narrow and dark in both themes, so this one carries its own
+  # background rather than following the theme.
+  square: brand/square.svg
+  # The full-width mark in both artwork colours; the Focus and Wizard headers
+  # follow the theme and pick whichever suits their background.
+  wide_light: brand/wide-light.svg
+  wide_dark: brand/wide-dark.svg
+
+# The colour surface: two Brand Colours plus the menu rail's own colour. Every
+# accent token in the theme is computed from these — there is no per-token
+# override. These are the framework's own accents written out, which the
+# derivation reproduces exactly, so the example looks as it always has; change
+# one and the whole app re-accents with it.
+#
+# A colour is written as hex and only hex — `#rgb` or `#rrggbb`. Anything else,
+# a CSS named colour included, earns a `branding/color-invalid` warning and
+# leaves that slot on the framework's own accent. Branding never blocks a build.
+colors:
+  # The most-present colour: navigation, selection and highlight state. Fills no
+  # button — `primary` here is the Brand Colour's rank, not a button's.
+  primary: "#00aeef"
+  # Fills the app's most important buttons.
+  secondary: "#ffbf00"
+  # The menu rail, dark in both themes and so a colour of its own.
+  rail: "#29333d"
+
+# The typefaces, one per role. Naming a family is the whole pick — the framework
+# resolves the webfont and stops serving its own defaults. These are the
+# framework's own faces written out, so the example reads as it always has;
+# change one to a different catalogue family and the app re-sets in it.
+#
+# A family the bundled catalogue can't contain — a licensed corporate typeface,
+# say — names the stylesheet serving it beside the family, and composes with a
+# catalogue pick in the other role:
+#
+#   heading:
+#     family: Corporate Grotesk
+#     stylesheet_url: https://fonts.example.com/corporate.css
+#
+# A family that is neither on the catalogue nor carrying a `stylesheet_url`
+# earns a `branding/font-unresolvable` warning and leaves that role on the
+# framework's own face. Branding never blocks a build.
+fonts:
+  # The face body text is set in.
+  text:
+    family: Open Sans
+  # The face headings are set in.
+  heading:
+    family: Montserrat

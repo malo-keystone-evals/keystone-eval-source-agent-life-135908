@@ -1,0 +1,6 @@
+# Developer-personal secret mappings, resolved host-side (ADR-0026). Never committed.
+.env.local
+# Regenerable framework output (bundles, generated types).
+.keystone/
+
+plugins/*/*/tsconfig.json

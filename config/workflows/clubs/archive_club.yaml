@@ -1,0 +1,46 @@
+version: 3
+run_as: system
+trigger:
+  kind: manual
+  model_name: clubs
+  status:
+    - active
+description: Archive a club, cancelling every session it still has scheduled in one bulk transition.
+nodes:
+  - id: cancel_sessions
+    title: Cancel the club's scheduled sessions
+    action:
+      kind: transition_all_models
+      model_name: events
+  - id: archive
+    title: Archive the club
+    action:
+      kind: transition_model
+      model_name: clubs
+connections:
+  - from_id: entry
+    to_id: cancel_sessions
+    transform:
+      steps:
+        - kind: where
+          property: club_id
+          equals: ".id"
+        - kind: where
+          property: status
+          equals: '"scheduled"'
+        - kind: copy
+          from: '"cancelled"'
+          to: ".status"
+        - kind: copy
+          from: ".id"
+          to: ".context.club_id"
+  - from_id: cancel_sessions
+    to_id: archive
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.club_id"
+          to: ".id"
+        - kind: copy
+          from: '"archived"'
+          to: ".status"

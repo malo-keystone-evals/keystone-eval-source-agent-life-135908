@@ -1,0 +1,161 @@
+# A scheduled meeting of a reading club. Shows a `dateTime` property (starts_at)
+# and a `ref` schema property (venue) that points at the shared `address` schema
+# in config/schemas/, stored as jsonb.
+version: 5
+initial_status: scheduled
+name: events
+singular_name: event
+display_name: Club Event
+description: >-
+  A single meeting of a reading club, at a time and place. Belongs to one club
+  and caches its name for cheap listing.
+icon_id: fa/solid/calendar-days
+# Opts the table into the per-table workflow trigger, so scheduling a meeting
+# fires events/plan_club_session (the ADR-0067 threads demo).
+workflow_tracked: true
+nav_section: community
+identity:
+  title: title
+  subtitles:
+    - starts_at
+statuses:
+  - name: scheduled
+  - name: cancelled
+  - name: completed
+policies:
+  - name: admin
+    description: Full control over events.
+    permissions:
+      - kind: view
+        properties:
+          - "*"
+        status:
+          - "*"
+        includes:
+          - "*"
+        lifecycle: true
+      - kind: create
+        properties:
+          - club_id
+          - title
+          - starts_at
+          - capacity
+          - venue
+        status:
+          - scheduled
+        required_properties:
+          - club_id
+          - title
+          - starts_at
+      - kind: update
+        properties:
+          - title
+          - starts_at
+          - capacity
+          - venue
+          # Written by `events/event_worksheet`, never by a person. It still has
+          # to be granted: an ungranted property is dropped from a write in
+          # silence, so the run would report success and leave the column null.
+          - worksheet_file_id
+        status:
+          - scheduled
+      - kind: transition
+        from:
+          - scheduled
+        to:
+          - cancelled
+          - completed
+  - name: catalogue
+    description: See upcoming club events.
+    permissions:
+      - kind: view
+        properties:
+          - club_id
+          - club_name
+          - title
+          - starts_at
+          - venue
+        status:
+          - scheduled
+          - completed
+properties:
+  - name: club_id
+    description: The club this event belongs to.
+    schema:
+      kind: string
+      format: uuid
+      required: true
+    foreign_key_to: clubs
+    storage:
+      kind: standard
+      storage_type: uuid
+      not_null: true
+      index: standard
+      on_delete: cascade
+  - name: club_name
+    description: The club's name, cached from clubs.
+    schema:
+      kind: string
+    editable: false
+    filterable: false
+    storage:
+      kind: cached
+      index: standard
+      source:
+        foreign_key: club_id
+        property: name
+  - name: title
+    description: What the meeting is about.
+    schema:
+      kind: string
+      required: true
+    storage:
+      kind: standard
+      storage_type: character varying
+      not_null: true
+  - name: starts_at
+    description: When the meeting starts.
+    schema:
+      kind: string
+      format: dateTime
+      required: true
+    storage:
+      kind: standard
+      storage_type: timestamp with time zone
+      not_null: true
+      index: standard
+  - name: capacity
+    description: Maximum attendees for this meeting.
+    schema:
+      kind: number
+      integer: true
+      min: 1
+    storage:
+      kind: standard
+      storage_type: integer
+  - name: venue
+    description: The physical venue, using the shared address schema.
+    schema:
+      kind: ref
+      name: address
+    filterable: false
+    sortable: false
+    storage:
+      kind: standard
+      storage_type: jsonb
+  - name: worksheet_file_id
+    description: The attendee worksheet rendered when this event was created.
+    # A File-Reference Property (ADR-0064) written by a WORKFLOW rather than an
+    # upload (ADR-0093): `events/event_worksheet` renders it on create and the
+    # narrowed attach gate accepts the reference because the run that made the
+    # file is the run writing it (D3). Nobody uploads here, so no form block
+    # names it.
+    schema:
+      kind: string
+      format: uuid
+    filterable: false
+    foreign_key_to: file_uploads
+    storage:
+      kind: standard
+      storage_type: uuid
+      on_delete: restrict

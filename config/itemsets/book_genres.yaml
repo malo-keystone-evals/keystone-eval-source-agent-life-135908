@@ -1,0 +1,36 @@
+# Labels + icons for the books.genre enum. An itemset gives an enum property a
+# richer Select (per-option text, description and icon) than rendering the raw
+# enum values. The `title` item is a non-selectable section heading.
+name: book_genres
+items:
+  - kind: title
+    text: Prose
+  - kind: option
+    value: fiction
+    text: Fiction
+    icon_id: fa/solid/book
+    description: Novels and short stories.
+  - kind: option
+    value: nonfiction
+    text: Non-fiction
+    icon_id: fa/solid/book
+  - kind: option
+    value: mystery
+    text: Mystery
+  - kind: option
+    value: science_fiction
+    text: Science Fiction
+  - kind: option
+    value: fantasy
+    text: Fantasy
+  - kind: option
+    value: biography
+    text: Biography
+  - kind: title
+    text: Other
+  - kind: option
+    value: childrens
+    text: Children's
+  - kind: option
+    value: poetry
+    text: Poetry

@@ -1,0 +1,318 @@
+version: 3
+# The system, with a grant — which is what authorises this workflow's box
+# (ADR-0091). See the note above `sandboxes:` for why, and `books.yaml`'s
+# `isbn_audit` grant for what it confers.
+run_as: system
+grant_name: isbn_audit
+trigger:
+  kind: manual
+  model_name: books
+  # A published book is one a patron can see, so a disagreement with the
+  # publisher's own data is worth knowing about. A draft has not been catalogued
+  # yet and an archived one is out of circulation — auditing either is work
+  # nobody reads.
+  status:
+    - published
+# A box per book. The record dimension is what makes the box worth keeping — the
+# downloaded publisher data is *this* book's, and a second audit of the same book
+# resumes the box rather than re-fetching.
+#
+# No `user:` dimension, and it would be refused if there were one: a system run
+# has no acting user to key on. That is also what makes one shared box the right
+# answer here rather than a hazard — see the note below `sandboxes:`.
+thread:
+  record: trigger
+description: >-
+  Checks one book's catalogue record against the publisher's own data, in an
+  [[Agent Sandbox]] the workflow prepares for it.
+#
+# ── What this example is for ──────────────────────────────────────────────────
+#
+# This is the demonstration of a **named sandbox** (D6): a box declared at the
+# workflow root, prepared by an ordinary node, and then worked in by an agent.
+# The reading desk (`members/reading_desk.yaml`) shows the other shape — a
+# `sandbox` tool with a box of its own, scratch space nothing else addresses.
+# The difference is the point of this file:
+#
+#   reading_desk    one agentic node, its own box, nothing to prepare
+#   isbn_audit      a setup step and an agent, sharing one box by name
+#
+# A `sandbox_exec` node is what makes the second shape possible. Fetching the
+# publisher record is deterministic — the URL is known, the command is known —
+# so it belongs in a step that has an error edge and a place in the run history,
+# not in a model's first turn where a bad exit code becomes a retry loop over a
+# `curl` that was either right or wrong.
+#
+# ── Trying it on a running stack ──────────────────────────────────────────────
+#
+#   1. Set the `e2b_main` credential — on the admin credentials page, or by
+#      declaring it `source: environment` and exporting what it names. Its
+#      binding to the `e2b` External API is also what tells the server which
+#      provider to run boxes on. Without a secret the sandbox fails closed at the
+#      moment a command would run, which is the safe direction and reports a
+#      misconfiguration rather than an empty audit.
+#   2. Set `isbndb_main` too. The audit's second command declares it, so a
+#      missing secret is a `credential_missing` Error Item naming the credential
+#      — not a `curl` that quietly 401s and leaves the agent auditing an error
+#      page.
+#   3. Set `open_ai_api` (or point `model:` at `anthropic_api`).
+#   4. Open a published book with an `isbn` and run the workflow from its page.
+#
+# With no E2B key set the run still *validates* and still reaches the node — it
+# is the command that refuses, and `sandbox_unavailable` is the Error Item you
+# should see.
+#
+# ── The named box ─────────────────────────────────────────────────────────────
+#
+# `sandboxes:` is the naming surface, and it mirrors `agent_states:` on purpose:
+# both name a durable thing a node binds.
+sandboxes:
+  audit:
+    # This project's own image (ADR-0090), declared at
+    # `config/sandbox_templates/audit-tools.yaml`. Named **bare**: the framework
+    # resolves the stem against the project's pinned Keystone version, so this
+    # line survives every upgrade untouched and the box is never pinned to an
+    # older `keystone` binary than the server it calls back to.
+    #
+    # It carries everything the framework image carries — `jq`, `git`, Python
+    # with pandas/numpy/matplotlib — because a project template is built `FROM`
+    # it, and adds only what this workflow actually needs. Omitting `template:`
+    # is still the right answer for a box wanting the stock image, which is what
+    # most workflows want; see `members/reading_desk.yaml` for the other one.
+    template: audit-tools
+    #
+    # A box's egress is deny-all-out plus the Keystone server; every entry here
+    # is a hole through that deny, and each one has to be load-bearing. This
+    # audit calls exactly one host, so it declares exactly one — and validation
+    # refuses a CIDR range or a wildcard, because a hole nobody can read the
+    # size of is not a declaration.
+    #
+    # The host matches `isbndb`'s `allowed_domains` in `external_apis.yaml`, and
+    # that is a coincidence worth naming: an `api_call` node's whitelist and a
+    # box's egress lock are separate mechanisms guarding separate paths. The box
+    # does not go through the External API layer at all, so the whitelist does
+    # not cover it — this line is what lets the `curl` out.
+    egress:
+      - api2.isbndb.com
+    # Environment variable name → System Credential name. Declaring it here does
+    # **not** put it in any command: it says the credential *exists* for this
+    # box, and a command then names the ones it wants. So the fetch step below
+    # gets the key and the agent's own shell does not — which is the whole
+    # reason injection is per-command rather than set on the box.
+    credentials:
+      ISBNDB_KEY: isbndb_main
+    # No `warm_seconds:` here, deliberately — the framework default is the right
+    # number and writing one out would only be a worse one.
+    #
+    # The field governs how long the box stays reachable with *nothing running
+    # in it*: the gap between the `fetch` node preparing this box and the
+    # `audit` node that works in it being dispatched, and the backstop for a
+    # worker that died holding it. It is not a limit on any command — a running
+    # turn holds the box's clock open for as long as it needs, so a command that
+    # thinks for twenty minutes is never racing this number.
+    #
+    # This workflow is a `manual` trigger, so it is background work and takes
+    # the 20s background default (ADR-0099): enough to hand the box from one
+    # step to the next, and no more. It once declared an hour, which bought
+    # nothing — a background run's box is *paused* the moment the run settles
+    # whatever the window says, and a paused box keeps its filesystem with no
+    # expiry (ADR-0096), so the next audit of this book resumes the same box
+    # either way. All the hour ever did was set how long a box nobody was
+    # holding stayed billable.
+#
+# A declared box has no acting user in its identity — it is *one* box, shared by
+# everyone who reaches the workflow, which is the right reading of
+# `sandboxes: { audit: … }`. On a `run_as: user` workflow sharing one thread that
+# would be one filesystem several admins could read each other's downloads off,
+# and `workflow/sandbox-shared-across-actors` refuses that shape.
+#
+# This workflow sidesteps it by running as the system, which is the other remedy
+# the rule names. Sharing is then harmless *because* there is no per-person
+# authority to leak: every run of this workflow reaches exactly the same data —
+# the book it was fired on, through the `isbn_audit` grant — whoever fired it.
+# What is in the box is what the grant already permits anyone who can start the
+# run to read.
+nodes:
+  - id: fetch
+    title: Fetch the publisher record
+    action:
+      kind: sandbox_exec
+      # Binds the declaration above. The agent's tool names the same one, which
+      # is how a setup step and the agent that follows it agree on which box
+      # they are talking about.
+      sandbox: audit
+      # Ordered, and stopping at the first failure — step two is written
+      # assuming step one happened. Which command failed, what it printed and
+      # its exit code arrive on the error edge as `command_failed`.
+      commands:
+        # A working directory of its own, so a re-run over a box that already
+        # has one is not an error. The box is a cache and setup has to be
+        # idempotent (D4): a threaded box may be resumed days later, and a
+        # paused E2B box is not a durability guarantee.
+        #
+        # The ISBN is validated and normalised to ISBN-13 in the same breath,
+        # and that is deliberately *before* the fetch: a malformed ISBN should
+        # cost nothing, not a publisher API call that 404s and leaves the agent
+        # auditing an error. It is also what this box's [[Sandbox Template]] is
+        # for — `stdnum` knows the check-digit rules and the 10↔13 conversion,
+        # and doing that by hand is arithmetic that is wrong the first time
+        # someone hits an `X` check digit.
+        #
+        # `sys.exit(str)` exits non-zero and prints to stderr, so a bad ISBN
+        # arrives on the error edge as `command_failed` naming the value.
+        # A literal block (`|-`), not a folded one (`>-`): folding joins lines
+        # with spaces, which is harmless for `jq` below and fatal for Python.
+        - command: |-
+            mkdir -p /home/user/audit
+            python3 -c "import sys; from stdnum import isbn; raw = sys.argv[1]; sys.exit('not a valid ISBN: ' + raw) if not isbn.is_valid(raw) else print(isbn.to_isbn13(isbn.compact(raw)))" "$RAW_ISBN" > /home/user/audit/isbn13.txt
+          args:
+            RAW_ISBN: .isbn
+        # The library's own record, read back through the Keystone API. No
+        # `credentials:` entry: every `sandbox_exec` command carries the *run's*
+        # token, which here is a [[Share Token]] on this book under the
+        # `isbn_audit` grant — the same authority the agent's shell gets below,
+        # and so the same one-book, catalogue-properties view of it.
+        - command: keystone show books "$BOOK_ID" -o /home/user/audit/catalogue.json
+          args:
+            BOOK_ID: .id
+          timeout_seconds: 30
+        # The command line is **literal shell** — never parsed, never
+        # interpolated. Everything dynamic arrives through the environment:
+        # `args:` computes values off the input Item, `credentials:` resolves
+        # secrets, and both land in this one command's environment.
+        #
+        # The command above shows that: the raw ISBN arrives as `$RAW_ISBN`
+        # rather than being interpolated into the line, so one carrying a space
+        # or a `;` cannot break it. This command needs no `args:` of its own —
+        # it reads the *normalised* ISBN the previous command wrote, which is
+        # the whole reason that command runs first.
+        #
+        # `--fail` is what turns an HTTP error into a non-zero exit. Without it
+        # `curl` writes the error body to the file and exits 0, and the agent
+        # would audit an error page as though it were publisher data.
+        - command: >-
+            curl --fail --silent --show-error
+            -H "Authorization: $ISBNDB_KEY"
+            -o /home/user/audit/publisher.json
+            "https://api2.isbndb.com/book/$(cat /home/user/audit/isbn13.txt)"
+          credentials:
+            - ISBNDB_KEY
+          # A network fetch that has not answered in 30s is not going to. The
+          # framework default is 180s, which is right for a test suite and far
+          # too patient for one GET.
+          timeout_seconds: 30
+        # Proves the framework template's `jq`, and proves the other half of the
+        # decision above: this line is full of braces and needs no escaping,
+        # because nothing parses it. It leaves a small readable file beside the
+        # raw one, so the agent's first command can be a `cat` of something it
+        # can take in rather than a page of publisher JSON.
+        - command: >-
+            jq '{title: .book.title, authors: .book.authors,
+            publisher: .book.publisher, date: .book.date_published,
+            pages: .book.pages}' /home/user/audit/publisher.json
+            > /home/user/audit/summary.json
+  - id: audit
+    title: Compare it with the catalogue
+    action:
+      kind: agentic_loop
+      model:
+        profile:
+          kind: static
+          name: mini-fast
+        credential:
+          kind: system
+          name: open_ai_api
+      # About the job, not the tooling: the box describes itself through the
+      # framework-generated [[Sandbox Briefing]], which is resolved from the
+      # same authority as the token and so cannot promise an action the mask
+      # dropped. Explaining the CLI here would be a second, un-generated copy.
+      #
+      # It does say where the files are, because that is *this workflow's* fact
+      # rather than the framework's — nothing in the briefing knows what the
+      # setup step wrote.
+      system_prompt: |
+        You are auditing one book's catalogue record at a small public library.
+
+        The workflow has already downloaded the publisher's own record for this
+        book into the box you are working in:
+
+        - /home/user/audit/publisher.json — the raw publisher response
+        - /home/user/audit/summary.json — the five fields worth comparing
+        - /home/user/audit/catalogue.json — the library's own record for this book
+
+        Read the summary and the catalogue record, using the `keystone` CLI for
+        anything the record only links to (its author), and say where the two
+        disagree.
+
+        What counts as a disagreement worth reporting:
+        - A different title, beyond punctuation and capitalisation.
+        - A different author, beyond the order of initials.
+        - A publisher or publication year the library has wrong or is missing.
+
+        What does not: a page count differing by a few (editions vary), or a
+        field the publisher does not carry.
+
+        Answer in prose addressed to a librarian, in a few sentences. Say
+        plainly when everything matches — that is the common case and it is
+        useful to hear. If a file is missing or empty, say that rather than
+        guessing what it would have said.
+      input_schema:
+        kind: object
+        properties:
+          message:
+            kind: string
+            required: true
+      force_tool_call: false
+      termination:
+        max_iterations: 6
+      tools:
+        - kind: sandbox
+          name: shell
+          # The same box the setup step prepared. This one line is what stage 01
+          # exists for: without it the agent gets a box of its own, and the
+          # files `fetch` wrote are in a box nothing can reach.
+          #
+          # No `template:` beside it — the declaration owns the box's image, so a
+          # tool stating one would be stating an image for a box it does not
+          # own, and validation refuses the pair.
+          sandbox: audit
+          # No `credentials:` here, deliberately, and the omission is the
+          # demonstration. `ISBNDB_KEY` exists for this box and the fetch step
+          # holds it; the agent's own commands — the ones a *model* composes —
+          # do not. Listing it here would be a separate decision, made in the
+          # open. Undeclared is never present.
+          #
+          # No `permissions:` either, and that omission is a *different* one
+          # from the credentials above (ADR-0091). This workflow runs as the
+          # system with `grant_name: isbn_audit`, so the box's credential is a
+          # [[Share Token]] minted on the book being audited, and the grant's
+          # policies are its whole authority. There is nothing left for a mask
+          # to narrow, and a `permissions:` block here would be refused rather
+          # than quietly discarded — `workflow/sandbox-mask-under-grant`.
+          #
+          # It is narrower than the mask it replaces, not merely different. A
+          # mask can only attenuate what the *run* holds, and a `run_as: user`
+          # run held the acting admin's authority: `view: [books, authors]`
+          # meant every book, every property, every status. The grant means one
+          # book and its author, through the read-only `catalogue` policy. The
+          # audit needs no more than that, and now cannot reach more.
+          # A `cat` and a `keystone query` are quick; the default 180s is a
+          # ceiling for a command that has gone wrong rather than a budget.
+          timeout_seconds: 60
+connections:
+  - from_id: entry
+    to_id: fetch
+    filters: []
+  - from_id: fetch
+    to_id: audit
+    filters: []
+    # The audit node takes a `message`, and the fetch node's output is
+    # `{ commands: [...] }` — so the edge has to compose one. Reading
+    # `commands[3].stdout` into it would work and would be worse: the agent is
+    # told where the files are by its system prompt, and handing it the summary
+    # text as well would give it two sources for one fact.
+    transform:
+      steps:
+        - kind: copy
+          from: '"Audit this book against the publisher record in /home/user/audit."'
+          to: ".message"

@@ -1,0 +1,45 @@
+# MODEL PROFILE ROUTING (ADR-0112): the blurb node picks its profile per book —
+# `if(coalesce(.featured, false), "mini-thinking", "mini-fast")` — and each
+# scripted turn's `profile:` pins which one its call was made on. A featured
+# book must reach `mini-thinking` on every call of the turn.
+#
+# The node writes only agent state, so there is nothing to assert in the world:
+# the routing is the assertion, and consuming both turns — `note`, then the
+# `submit` its guard only then allows — proves the turn ran the way the script
+# describes.
+version: 3
+name: featured_book_thinks_harder
+description: A featured book's blurb is written on the mini-thinking profile.
+backdrop:
+  records:
+    authors:
+      - $alias: a1
+        fields:
+          name: Ursula K. Le Guin
+    books:
+      - $alias: b1
+        fields:
+          title: The Dispossessed
+          author_id: a1
+          genre: science_fiction
+          featured: true
+          # Explicit: the backdrop fills this column with 0 rather than
+          # null, and `coalesce(.blurb_budget_usd, 5)` then reads a $0 ceiling
+          # that stops the run before its first call.
+          blurb_budget_usd: 5
+          status: draft
+trigger:
+  kind: manual
+  record: b1
+  user_input: {}
+llm_turns:
+  blurb:
+    - profile: mini-thinking
+      tool_calls:
+        - name: note
+          args: { angle: "an ambiguous utopia, told from both worlds" }
+    - profile: mini-thinking
+      tool_calls:
+        - name: submit
+          args: { blurb: "Two worlds, one physicist, and a wall worth questioning." }
+expect: {}

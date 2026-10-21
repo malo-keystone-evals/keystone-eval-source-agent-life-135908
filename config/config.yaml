@@ -1,0 +1,122 @@
+# Project root config (KeystoneRootConfig). Declares sign-in methods, the
+# ordered navigation sections page routes slot into, the project-wide additive
+# domain whitelist, the default HTTP retry budget for api_call nodes, and how
+# long workflow runs are kept.
+version: 9
+status_enums: true
+
+# No `features:` block, and in particular no `legacy_panels: true` (ADR-0111
+# D2). The Config Upgrade writes that key into every project that predates it,
+# holding it on the layout with panels in it; this one is written by hand at the
+# new version with the key absent, because panels are for existing legacy apps
+# and the example is not one.
+
+authentication:
+  # Two sign-in methods enabled: classic password, and email + emailed code.
+  email_and_password:
+    enabled: true
+    # Self-service account creation (ADR-0081): a visitor submits an address and
+    # a password, verifies it with an emailed code, and the verification creates
+    # the user. On here so the example exercises it — a real project decides for
+    # itself whether it takes signups, and the default is that it does not.
+    allow_new_users: true
+    # The Onboarding Process every self-service signup through this door is
+    # assigned to (ADR-0110 D6), written into the new user’s `onboarding`
+    # column by the verification that creates the account. `member` holds them
+    # on one step until their `members` row exists — which is the Brief’s
+    # library, whose signups must become members before the rest of the site
+    # makes any sense. Per door, so an OIDC provider would name its own key;
+    # this project configures none.
+    new_user_onboarding: member
+  email_and_code: true
+  # Only users in one of these statuses may sign in or hold a session.
+  allowed_statuses:
+    - active
+
+# Additive to each External API's own `allowed_domains` — the union is the
+# closed-by-default whitelist outbound api_call requests are checked against.
+allowed_domains:
+  - api.open-meteo.com
+  - api2.isbndb.com
+  - hooks.example.com
+
+# api_call nodes retry temporary HTTP failures this many times unless a node
+# overrides it.
+default_max_retries: 3
+
+# How many days a workflow run is kept before the hourly retention sweep
+# deletes it, with its steps, its errors and the trigger events nothing
+# references any more. Optional — absent means 7 — and there is no off switch:
+# the minimum is 1, because a kept run holds its encrypted input and output
+# forever. Spelled out here at the default to show the knob exists.
+workflow_retention_days: 7
+
+# File storage for File-Reference Properties (ADR-0064) — the non-secret
+# topology of the project's object store. Required once any spec declares a
+# File-Reference Property (e.g. books.cover_image_id). Local dev ignores these
+# values and always uses the filesystem-backed Dev File Store, so the bucket /
+# region here are placeholders and the credential's secret need not be entered
+# for dev; they matter only against a real S3 store. The secret rides the
+# credentials system as the `file_storage_main` System Credential below.
+file_storage:
+  bucket: modern-project-uploads
+  region: us-east-1
+  credential: file_storage_main
+
+# Where this project's System Emails come from (ADR-0079). The SMTP host, port
+# and TLS mode are not here: they ride the named credential's `base_url`
+# (`smtps://host:port` for implicit TLS, `smtp://host:port` for STARTTLS), set
+# alongside the mail password on the admin credentials page. Nor is the From
+# display name — that is the Branding app name, resolved at send time. Local dev
+# never reaches a real mail server: sends land in the Dev Mail Store, so nothing
+# here needs to be real for a dev run.
+email:
+  credential: system_email_main
+  from_address: no-reply@modern-project.example.com
+
+# What stops a robot from spending this project's mail credential on somebody
+# else's inbox (ADR-0082). Cloudflare Turnstile: the public `site_key` rides the
+# App Config Artifact to the browser, which renders the widget with it, and the
+# secret behind the server-side verify call rides the named credential — set on
+# the admin credentials page, never committed. Local dev bypasses verification
+# (the widget still renders, so the flow is the flow a visitor walks), so nothing
+# here needs to be real for a dev run — and these two are in fact Cloudflare's
+# documented always-passes test pair, so a live run against them passes too.
+captcha:
+  credential: turnstile_main
+  site_key: 1x00000000000000000000AA
+
+# Speak into a field instead of typing (ADR-0126). Declaring this block puts a
+# mic on every Markdown Field, multiline text field and agent chat composer;
+# a form block opts out with `dictation: false`. The recording is transcribed
+# through OpenAI and then Polished — fillers out, punctuation and spoken
+# corrections in, and markdown structure in a Markdown Field — by the cheap,
+# quick profile, both on the same OpenAI key the agents use. Nothing is kept:
+# the audio is dropped once transcribed. The vocabulary is for words config
+# cannot see; the labels the specs and itemsets already carry are added for us.
+dictation:
+  transcription:
+    credential: open_ai_api
+    model: gpt-transcribe
+  polish:
+    model:
+      profile: { kind: static, name: mini-fast }
+      credential: { kind: system, name: open_ai_api }
+  vocabulary: [Athenaeum, ISBNdb, Keystone]
+
+# Sidebar groupings, in display order. A section's `name` is what a page route's
+# `section` refers to; a section shows once at least one of its routes is
+# reachable by the current user.
+sections:
+  - name: library
+    label: Library
+    icon_id: fa/solid/books
+  - name: community
+    label: Community
+    icon_id: fa/regular/users-rectangle
+  - name: circulation
+    label: Circulation
+    icon_id: fa/solid/book-bookmark
+  - name: ops
+    label: Operations
+    icon_id: fa/solid/gauge-high

@@ -1,0 +1,6 @@
+ALTER TABLE workflow_thread_files DROP CONSTRAINT IF EXISTS workflow_thread_files__fk_2xbktrfjrz;
+DROP INDEX IF EXISTS workflow_thread_files__idx_nrcbxny9wa;
+DROP INDEX IF EXISTS workflow_thread_files__idx_2xbktrfjrz;
+DROP INDEX IF EXISTS workflow_thread_files__idx_1yuqutcxsn7;
+DROP INDEX IF EXISTS workflow_thread_files__idx_s1gk7xkfhp;
+DROP TABLE workflow_thread_files;

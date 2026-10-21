@@ -1,0 +1,173 @@
+version: 3
+run_as: system
+trigger:
+  kind: endpoint
+  path: enrich
+  method: post
+  model_name: books
+  statuses:
+    - draft
+    - published
+  auth:
+    policies:
+      - admin
+  input_schema:
+    kind: object
+    properties: {}
+  returns:
+    - code: 200
+      body:
+        kind: object
+        properties:
+          page_count:
+            kind: number
+    - code: 404
+      body:
+        kind: object
+        properties:
+          error:
+            kind: string
+    - code: 422
+      body:
+        kind: object
+        properties:
+          error:
+            kind: string
+    - code: 502
+      body:
+        kind: object
+        properties:
+          name:
+            kind: string
+          message:
+            kind: string
+  timeout_seconds: 20
+  response: single
+description: Enrich a book's page count from ISBNdb (anchored endpoint). A switch refuses a book whose ISBN is not 10 or 13 digits before anything is called, ISBNdb's "no such book" is a 404, and every other failure answers 502 through one Error Handler.
+nodes:
+  - id: check
+    title: Is the ISBN well-formed?
+    action:
+      kind: switch
+      cases:
+        - name: not_an_isbn
+          when: coalesce(.isbn, "").replace("-", "").regex("^([0-9]{9}[0-9X]|[0-9]{13})$").eq(null)
+  - id: not_an_isbn
+    title: Refuse a malformed ISBN
+    action:
+      kind: respond
+      status: 422
+      returns_sensitive_data: false
+  - id: lookup
+    title: Look the ISBN up in ISBNdb
+    action:
+      kind: api_call
+      method: get
+      path: /book
+      input_schema:
+        kind: object
+        properties:
+          isbn:
+            kind: string
+      request_mode: per_item
+      external_api: isbndb
+      credential:
+        kind: system
+        name: isbndb_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: ".isbn"
+            to: ".path_params.isbn"
+      output_schema:
+        kind: object
+        properties:
+          page_count:
+            kind: number
+      output_transform:
+        steps:
+          - kind: copy
+            from: ".book.pages"
+            to: ".page_count"
+      response_format:
+        kind: json
+      output_mode: single
+      sends_sensitive_data: false
+  - id: save
+    title: Save the page count
+    action:
+      kind: update_model
+      model_name: books
+  - id: ok
+    title: Return the page count
+    action:
+      kind: respond
+      status: 200
+      returns_sensitive_data: false
+  - id: missing
+    title: Return not-found
+    action:
+      kind: respond
+      status: 404
+      returns_sensitive_data: false
+  - id: upstream_failed
+    title: Answer with what went wrong
+    action:
+      kind: respond
+      status: 502
+      returns_sensitive_data: false
+connections:
+  - from_id: entry
+    to_id: check
+    transform:
+      steps:
+        - kind: copy
+          from: ".isbn"
+          to: ".isbn"
+        - kind: copy
+          from: ".id"
+          to: ".context.book_id"
+  - from_id: check
+    to_id: not_an_isbn
+    transform:
+      steps:
+        - kind: copy
+          from: '"This book has no ISBN-10 or ISBN-13 to look up"'
+          to: ".error"
+    case: not_an_isbn
+  - from_id: check
+    to_id: lookup
+    case: else
+  - from_id: lookup
+    to_id: save
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.book_id"
+          to: ".id"
+        - kind: copy
+          from: object("page_count", .page_count)
+          to: ".properties"
+        - kind: copy
+          from: ".page_count"
+          to: ".context.page_count"
+  - from_id: save
+    to_id: ok
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.page_count"
+          to: ".page_count"
+  - from_id: lookup
+    to_id: missing
+    kind: error
+    filters:
+      - filter_selector: ".name.eq(http_4xx)"
+    transform:
+      steps:
+        - kind: copy
+          from: '"Book not found in ISBNdb"'
+          to: ".error"
+    label: ISBNdb has no such book
+on_error:
+  - to: upstream_failed

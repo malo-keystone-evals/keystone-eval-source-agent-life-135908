@@ -1,0 +1,85 @@
+version: 3
+run_as: system
+trigger:
+  kind: manual
+  model_name: books
+  status:
+    - draft
+    - published
+description: >-
+  Shows a model the book's uploaded cover and writes what it sees onto the
+  book — the example of a declared [[Viewed File]] (ADR-0114).
+nodes:
+  - id: describe
+    title: Look at the cover and describe it
+    action:
+      kind: agentic_loop
+      model:
+        # `mini-vision` is the project's only profile with `vision: true`. On
+        # any other, `view:` below is a validation error.
+        profile:
+          kind: static
+          name: mini-vision
+        credential:
+          kind: system
+          name: open_ai_api
+      # Everything the node reads off the Item is declared, so `view:` and the
+      # binding's `init` type-check against it (ADR-0067).
+      input_schema:
+        kind: object
+        properties:
+          message:
+            kind: string
+            required: true
+          cover_image_id:
+            kind: string
+      # The cover itself, beside the message. A book with no cover evaluates to
+      # null and the model is shown nothing; one whose file is not an image, or
+      # is too large, reaches the model as a one-line note instead.
+      view:
+        - .cover_image_id
+      system_prompt: |
+        You describe book covers for a library catalogue. Look at the attached
+        cover image and say what is actually on it — colours, shapes, any
+        figures or text — in two or three plain sentences. Describe only what
+        you can see; do not guess at the book's plot. If no image is attached,
+        say so in one sentence.
+      structured_output:
+        kind: object
+        properties:
+          cover_description:
+            kind: string
+            required: true
+      termination:
+        max_iterations: 3
+  - id: save
+    title: Write the description onto the book
+    action:
+      kind: update_model
+      model_name: books
+connections:
+  - from_id: entry
+    to_id: describe
+    transform:
+      steps:
+        - kind: copy
+          from: '"Describe the cover of \"".concat(.title).concat("\".")'
+          to: ".message"
+        # The book's id rides in the Item Context, past the agent and onto the
+        # save: the model describes a picture, it never echoes an identifier.
+        - kind: copy
+          from: ".id"
+          to: ".context.book_id"
+        - kind: copy
+          from: ".cover_image_id"
+          to: ".cover_image_id"
+  - from_id: describe
+    to_id: save
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.book_id"
+          to: ".id"
+        - kind: copy
+          from: object("cover_description", .output.value.cover_description)
+          to: ".properties"

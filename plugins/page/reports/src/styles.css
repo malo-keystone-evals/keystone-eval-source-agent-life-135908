@@ -1,0 +1,52 @@
+.reports {
+  padding: 1.5rem;
+  font-family: system-ui, sans-serif;
+}
+
+.reports__title {
+  margin: 0 0 0.5rem;
+  font-size: 1.4rem;
+}
+
+.reports__hint {
+  margin: 0 0 1rem;
+  color: #555;
+}
+
+.reports__quarters {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.reports__quarter {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.reports__quarter--active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.reports__tables {
+  display: flex;
+  gap: 2rem;
+  margin-top: 1.5rem;
+}
+
+.reports__breakdown h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.reports__breakdown td {
+  padding: 0.2rem 1rem 0.2rem 0;
+}
+
+.reports__refused {
+  color: #b45309;
+}

@@ -1,0 +1,27 @@
+kind: workflow
+name: slugify
+# One tiny, dependency-free npm package, kept deliberately small — this example
+# exists partly to exercise the plugin toolchain's dependency resolution and
+# bundling end to end. It also echoes an optional `record_id` straight through,
+# so a workflow can slugify a title and still know which record to write the
+# slug back onto (see books/generate_book_slug).
+dependencies:
+  slugify: ^1.6.6
+input:
+  kind: object
+  required: true
+  properties:
+    title:
+      kind: string
+      required: true
+    record_id:
+      kind: string
+output:
+  kind: object
+  required: true
+  properties:
+    slug:
+      kind: string
+      required: true
+    record_id:
+      kind: string

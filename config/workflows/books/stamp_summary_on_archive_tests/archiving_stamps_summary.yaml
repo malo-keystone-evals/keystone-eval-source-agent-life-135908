@@ -1,0 +1,30 @@
+# The on_enter workflow stamps a fixed summary when a book is archived.
+version: 3
+name: archiving_stamps_summary
+description: Entering the archived status overwrites the book's summary.
+backdrop:
+  records:
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          summary: A desert epic.
+          status: published
+trigger:
+  kind: on_enter
+  record: b1
+  status:
+    from: published
+    to: archived
+expect:
+  world:
+    updated:
+      books:
+        - record: b1
+          changes:
+            summary: Archived - no longer in the active catalogue.

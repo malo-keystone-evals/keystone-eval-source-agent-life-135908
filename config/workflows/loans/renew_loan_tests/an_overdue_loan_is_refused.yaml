@@ -1,0 +1,45 @@
+# The switch's named case: the loan is overdue, the fail node raises
+# `loan_overdue`, and the Error Handler tells the member why.
+version: 3
+name: an_overdue_loan_is_refused
+description: An overdue loan is refused as loan_overdue, and the handler tells the member.
+now: 2026-06-01T00:00:00Z
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+          first_name: Alice
+          last_name: Reader
+    members:
+      - $alias: m1
+        fields:
+          user_id: u1
+          display_name: Alice R.
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    loans:
+      - $alias: l1
+        fields:
+          book_id: b1
+          member_id: m1
+          due_on: "2026-05-20"
+          status: overdue
+trigger:
+  kind: manual
+  record: l1
+expect:
+  calls:
+    tell_refused:
+      - body:
+          book: Dune
+          reason: loan_overdue

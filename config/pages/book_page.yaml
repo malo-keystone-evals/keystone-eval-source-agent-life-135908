@@ -1,0 +1,170 @@
+# The book record page, exercising every PageTab kind: a `blocks` tab (with a
+# properties block, a widgets block of record_count tiles AND a plugin block),
+# a `table` tab of the related reviews, two `plugin` tabs (the React
+# reading-time and Solid shelf-label page plugins), and a `lifecycle` history
+# tab.
+version: 4
+name: book_page
+route:
+  section: library
+  path: /books/:id/:tab?
+  roles:
+    - admin
+    - librarian
+    - patron
+    # Front-desk staff, for the Catalogue desk tab below: their read-only tier
+    # is a filtered grant, so the page opens for them on a featured book and
+    # shows them nothing on any other. That is the filter, not a fault.
+    - circulation
+  order: 1
+  hidden: true
+content:
+  kind: record
+  model_name: books
+  # The listing this record page sits under (books_listing lists the same
+  # model and carries a route), giving it a back arrow and letting the
+  # listing's filters, sort and view mode ride the record page URL.
+  parent_page: books_listing
+  tabs:
+    - kind: blocks
+      label: Overview
+      title: Overview
+      value: overview
+      blocks:
+        - kind: properties
+          omit:
+            - board_rank
+            - rating_total
+          # Editable in place: a PermissionsList, so `*` offers every property
+          # and `!isbn` takes the ISBN back out — an identifier, kept read-only
+          # on the page as the example of a deny. Every editable property is
+          # drawn as its field from the start; focus one to edit it, and it
+          # saves when it is left (ADR-0124). The rest of the block is the
+          # read-only shell: `isbn`, and what the model itself keeps read-only —
+          # `slug`, the computed counts. `webhook_secret` is never offered
+          # whatever the list says, being a Sensitive password. A ceiling, not a
+          # grant — a patron, whose policy updates nothing, sees the whole block
+          # read-only.
+          editable:
+            - "*"
+            - "!isbn"
+        - kind: widgets
+          title: At a glance
+          widgets:
+            - widget:
+                kind: record_count
+                label: Reviews
+                model_name: reviews
+                filters:
+                  - propertyName: book_id
+                    operator: eq
+                    valueAExpr: .id
+                    valueBExpr: null
+                    not: false
+              placement:
+                x: 0
+                y: 0
+                width: 1
+                height: 1
+            - widget:
+                kind: record_count
+                label: Active loans
+                model_name: loans
+                filters:
+                  - propertyName: book_id
+                    operator: eq
+                    valueAExpr: .id
+                    valueBExpr: null
+                    not: false
+                  - propertyName: status
+                    operator: eq
+                    valueAExpr: active
+                    valueBExpr: null
+                    not: false
+              placement:
+                x: 1
+                y: 0
+                width: 1
+                height: 1
+        # The same `reading-time` plugin the tab further down mounts, stacked
+        # here as a block. Deliberately the same one: a manifest never says
+        # which mounts it permits, so a plugin bound to `books` renders on
+        # either surface with nothing changed about the plugin, and having both
+        # on one page is what shows it.
+        #
+        # `title` is required on this kind and always drawn — the host has no
+        # loading state, so a block with no heading would read as a missing
+        # block while the bundle resolves rather than a slow one.
+        - kind: plugin
+          plugin_name: reading-time
+          title: Reading time
+    - kind: table
+      label: Reviews
+      value: reviews
+      model_name: reviews
+      # The listing these rows stand in for: its `record_actions` are what a row
+      # of this tab offers — the row menu, the pencil, the panel a row opens and
+      # the record page a second click reaches. The page's own block governs
+      # `books`, so it is never these rows'.
+      listing_page: reviews_listing
+      # `in` rather than `eq`: over a string `eq` resolves to a date comparison,
+      # which queries the same rows but reads as a date filter on the listing a
+      # link out of this tab carries it to.
+      filters:
+        - propertyName: book_id
+          operator: in
+          valueAExpr: .id
+          valueBExpr: null
+          not: false
+    # STREAMED CHAT DEMO 2 (ADR-0071): a first-class `agent_chat` tab.
+    #
+    # No visibility rule here, and the tab offers none. That is correct rather
+    # than a gap — who may read this conversation is the thread's own gate, and
+    # a rule duplicated into the page config could drift away from it. The tab
+    # mounts for anyone who can reach the page and shows whatever the server
+    # will give them, down to nothing.
+    #
+    # No `sidebar` either: the workflow's thread has a `record` dimension and no
+    # conversation one, so there is exactly one conversation per book and
+    # nothing to switch between. `auto` resolves to no switcher on its own.
+    #
+    # The read-only tier this tab wants — circulation staff following the
+    # catalogue team's conversation without joining it — is `circulation`'s
+    # filtered grant in config/roles.yaml: `read` on `workflow_threads`,
+    # narrowed to this workflow's path. The floor underneath it is still
+    # participation (D35, the `conversation_reader` role): a role-admitted
+    # colleague with no tier of their own reads a thread only after writing to
+    # it. What the tier stops short of is the transcript — the ledger events
+    # have no workflow path to filter on — so a circulation reader sees the
+    # conversation exists and not what it said, until D38 lands.
+    - kind: agent_chat
+      label: Catalogue desk
+      value: catalogue_desk
+      title: Catalogue desk
+      workflow: books/catalogue_desk
+      placeholder: Describe the change…
+      empty_state:
+        text: A shared conversation about this book. Colleagues can read it later to see why the record reads the way it does.
+        suggestions:
+          - This has been reissued — new blurb, and it should be young adult.
+          - The page count is wrong, it's 412.
+          - Summarise what's changed on this record.
+    - kind: plugin
+      label: Reading time
+      title: Reading time
+      value: reading_time
+      plugin_name: reading-time
+    - kind: plugin
+      label: Shelf label
+      title: Shelf label
+      value: shelf_label
+      plugin_name: shelf-label
+    - kind: plugin
+      label: Webhook secret
+      title: Webhook secret
+      value: webhook_secret
+      plugin_name: book-secret
+    - kind: lifecycle
+      label: History
+      title: History
+      value: history

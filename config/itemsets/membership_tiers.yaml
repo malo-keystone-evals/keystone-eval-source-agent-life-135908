@@ -1,0 +1,16 @@
+# Labels + icons for the members.membership_tier enum, reused by the member
+# onboarding wizard's tier select.
+name: membership_tiers
+items:
+  - kind: option
+    value: bronze
+    text: Bronze
+    description: Up to 3 loans at a time.
+  - kind: option
+    value: silver
+    text: Silver
+    description: Up to 6 loans at a time.
+  - kind: option
+    value: gold
+    text: Gold
+    description: Up to 12 loans at a time, plus early access to new titles.

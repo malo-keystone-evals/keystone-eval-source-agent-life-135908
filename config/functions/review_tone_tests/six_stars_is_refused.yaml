@@ -1,0 +1,8 @@
+version: 3
+name: six stars is refused
+trigger:
+  kind: call
+  input:
+    rating: 6
+expect:
+  error: rating_out_of_range

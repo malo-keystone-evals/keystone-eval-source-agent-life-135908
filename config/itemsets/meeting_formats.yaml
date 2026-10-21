@@ -1,0 +1,15 @@
+# Options for the `meeting_format` union discriminant on clubs, driving the
+# select that chooses which branch of the edit_club form is shown.
+name: meeting_formats
+items:
+  - kind: option
+    value: in_person
+    text: In person
+    icon_id: fa/solid/location-dot
+  - kind: option
+    value: online
+    text: Online
+    icon_id: fa/solid/video
+  - kind: option
+    value: hybrid
+    text: Hybrid

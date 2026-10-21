@@ -1,0 +1,47 @@
+# The member_contact Function answers member_missing, which the first
+# handler takes: the desk is alerted, then the orphan is recorded.
+version: 3
+name: a_missing_member_alerts_the_desk
+description: A loan whose member is gone alerts the desk and records the orphan.
+now: 2026-06-01T00:00:00Z
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+          first_name: Alice
+          last_name: Reader
+    members:
+      - $alias: m1
+        fields:
+          user_id: u1
+          display_name: Alice R.
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    loans:
+      - $alias: l1
+        fields:
+          book_id: b1
+          member_id: 00000000-0000-4000-8000-000000000001
+          due_on: "2026-06-15"
+          status: requested
+trigger:
+  kind: manual
+  record: l1
+expect:
+  calls:
+    alert_desk:
+      - body:
+          problem: no member 00000000-0000-4000-8000-000000000001
+    audit_orphan:
+      - body:
+          event: orphaned_loan

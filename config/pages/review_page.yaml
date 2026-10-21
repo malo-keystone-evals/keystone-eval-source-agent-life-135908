@@ -1,0 +1,62 @@
+# A review record page. Exists mainly so the Markdown Property `body` has a
+# detail surface: the `properties` block renders it through the Property Grid,
+# which is the one place a markdown value renders in full (ADR-0078 D1) —
+# the listing's table column shows the raw string and its card view renders it
+# clamped to `summary_lines`.
+version: 4
+name: review_page
+route:
+  section: circulation
+  path: /reviews/:id/:tab?
+  roles:
+    - admin
+    - librarian
+  order: 3
+  hidden: true
+content:
+  kind: record
+  model_name: reviews
+  # The listing this record page sits under, so a review reached from a book's
+  # Reviews tab has a back arrow, and the tab's filters ride there and land on
+  # the listing when it is taken.
+  parent_page: reviews_listing
+  tabs:
+    - kind: blocks
+      label: Review
+      title: Review
+      value: review
+      blocks:
+        - kind: properties
+          omit: null
+          # An ordered include list: the block renders exactly these, in this
+          # order, rather than the model's declaration order. A review reads
+          # headline-then-verdict-then-body, which is not how the spec declares
+          # them.
+          properties:
+            - headline
+            - rating
+            - recommended
+            # The Markdown Property on its detail surface: this grid renders it
+            # as rich text, where the reviews listing this page sits under
+            # shows the raw string in its table column and renders it clamped
+            # in its card view.
+            - body
+            - tags
+          # Editable in place: focus the field, and the value saves when the
+          # field is left rather than on a timer (ADR-0106 D3) — a body
+          # left mid-sentence is kept in the browser instead, and comes back
+          # marked. A ceiling, not a grant — every name here is still
+          # intersected with the viewer's own update permission at the record's
+          # current status.
+          #
+          # `*` covers `rating` too, and it will never be offered: no policy's
+          # `update` permission covers it (admin's names headline, body,
+          # recommended and tags), so the ceiling drops it at render time. That
+          # is the demonstration — a wildcard cannot grant an edit the viewer
+          # could not already make.
+          editable:
+            - "*"
+    - kind: lifecycle
+      label: History
+      title: History
+      value: history

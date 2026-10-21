@@ -1,0 +1,8 @@
+ALTER TABLE workflow_ledger_events DROP CONSTRAINT IF EXISTS workflow_ledger_events__fk_1bmqisa183n;
+ALTER TABLE workflow_ledger_events DROP CONSTRAINT IF EXISTS workflow_ledger_events__fk_du20axrhlu;
+DROP INDEX IF EXISTS workflow_ledger_events__idx_nrcbxny9wa;
+DROP INDEX IF EXISTS workflow_ledger_events__idx_2xbktrfjrz;
+DROP INDEX IF EXISTS workflow_ledger_events__idx_cp7eedsmj8;
+DROP INDEX IF EXISTS workflow_ledger_events__idx_2efkqv4sv7i;
+DROP INDEX IF EXISTS workflow_ledger_events__idx_12ayleo2n14;
+DROP TABLE workflow_ledger_events;

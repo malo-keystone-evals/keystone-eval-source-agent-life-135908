@@ -1,0 +1,51 @@
+# The receipt hook is down (503): the second handler's switch takes the
+# else branch, pages whoever is on call, and logs the failure.
+version: 3
+name: a_receipt_outage_pages_on_call
+description: A receipt hook answering 503 pages on call and logs it.
+now: 2026-06-01T00:00:00Z
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+          first_name: Alice
+          last_name: Reader
+    members:
+      - $alias: m1
+        fields:
+          user_id: u1
+          display_name: Alice R.
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    loans:
+      - $alias: l1
+        fields:
+          book_id: b1
+          member_id: m1
+          due_on: "2026-06-15"
+          status: requested
+external:
+  send_receipt:
+    $fail:
+      status: 503
+trigger:
+  kind: manual
+  record: l1
+expect:
+  calls:
+    page_outage:
+      - body:
+          service: receipts
+    log_outage:
+      - body:
+          event: http_5xx

@@ -1,0 +1,20 @@
+# Create/edit a club event. Uses record_fields for the scalar properties; the
+# jsonb `venue` (a ref-schema object) is presented separately by the read-only
+# venue_details data modal, so it is left out here.
+version: 3
+name: edit_event
+icon_id: fa/solid/calendar-days
+description: Schedule or edit a club event.
+content:
+  kind: form
+  blocks:
+    - kind: record_fields
+      properties:
+        - club_id
+        - title
+        - starts_at
+        - capacity
+subject:
+  kind: record
+  model_name: events
+  initial_status: scheduled

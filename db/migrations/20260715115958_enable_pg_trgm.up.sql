@@ -1,0 +1,11 @@
+-- Enable the pg_trgm extension before any migration that builds a trigram GIN
+-- index (`USING gin (... gin_trgm_ops)`) — the identity search indexes the
+-- first project migration creates. Ordered one tick before that migration so
+-- the operator class exists when it runs.
+--
+-- Hand-written, and kept: it predates extensions becoming part of the desired
+-- structure (D11). `structure.sql` records it, so a sync sees the extension as
+-- already installed and emits nothing. A project scaffolded today gets its
+-- `CREATE EXTENSION` generated into its first migration instead, ordered ahead
+-- of the indexes in the same file.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;

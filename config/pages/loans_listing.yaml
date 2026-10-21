@@ -1,0 +1,56 @@
+# Circulation desk. The default view is a Board declaring its columns
+# explicitly (drag-reorderable by board_rank); a Table view sits behind it.
+# Dragging a card between columns transitions the loan.
+version: 4
+name: loans_listing
+title: Loans
+icon_id: fa/solid/book-bookmark
+route:
+  section: circulation
+  path: /loans
+  roles:
+    - admin
+    - librarian
+  order: 1
+content:
+  kind: listing
+  model_name: loans
+  views:
+    - kind: board
+      # Overdue is a state an active loan falls into rather than a stage of its
+      # own, so the two share one Combined Column. Its cards interleave by
+      # board_rank and each carries a status chip saying which of the two it is.
+      columns:
+        - requested
+        - title: On loan
+          statuses:
+            - active
+            - overdue
+        - returned
+      card:
+        summary_property: book_title
+      ordering:
+        kind: position
+        property: board_rank
+    - kind: table
+      default_sort:
+        column: due_on
+        direction: asc
+  page_actions:
+    add_modal: edit_loan
+  record_actions:
+    related_links:
+      - "*"
+    show_status: true
+    # The loans spec carries an `audits:` block, so `{}` would derive this
+    # anyway; naming it keeps the affordance visible in the page config.
+    view_audits: true
+    # `fields:` draws the deprecated Item Details block, and declaring it
+    # reports `page/record-actions-fields-deprecated`. Kept deliberately: this
+    # model has no record page for the display to move to, so the example keeps
+    # a live instance of the shape the finding points away from.
+    fields:
+      - book_title
+      - due_on
+    modals:
+      - "*"

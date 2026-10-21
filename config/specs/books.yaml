@@ -1,0 +1,578 @@
+# The catalogue's central model. `books` is the showcase's storage-kind tour:
+# alongside plain `standard` columns it carries a `cached` column (author_name,
+# denormalised across the author FK), two `aggregate` columns (review_count /
+# rating_total, rolled up from the reviews it owns), and a `calculated` column
+# (average_rating, derived in-row from the two aggregates). `reviews_at_shelving`
+# is the aggregate one again under a `snapshot:` block — the same correlated
+# `COUNT`, taken once as the book is shelved or archived. A `lexoRank` column
+# (board_rank) unlocks the drag-to-reorder Board view on the books listing, and
+# a `slug` filled by the `generate_book_slug` workflow plugin shows a column a
+# workflow owns rather than the user.
+version: 4
+initial_status: draft
+workflow_tracked: true
+name: books
+singular_name: book
+display_name: Book
+description: >-
+  A book in the library catalogue. Holds an FK to its author, rolls up the
+  reviews written about it, and moves through a small draft → published →
+  archived lifecycle.
+icon_id: fa/solid/book
+nav_section: library
+identity:
+  title: title
+statuses:
+  # Each status names a Label Color, which is what the chip wears wherever a
+  # book's status is drawn — the listing's status column, its board and cards
+  # views, and a record page's property grid. The three read as a progression:
+  # gray for the unfinished, green for the live, blue for the put away.
+  - name: draft
+    color: gray
+    description: Being catalogued; not yet visible to patrons.
+  - name: published
+    color: green
+    description: Live in the catalogue and available to borrow.
+  - name: archived
+    color: blue
+    description: Retired from circulation but kept for the record.
+policies:
+  # System-workflow permissions. No role names this policy, though the `admin`
+  # role's `policies: ["*"]` holds it. Declared first because update permissions
+  # are first match in spec order, not a union.
+  #
+  # - draft: the generate_book_slug workflow writes `slug`, which is
+  #   `editable: false` and so cannot be named in an explicit list; `"*"` is the
+  #   only way to reach it. HTTP writes still drop non-editable properties, and
+  #   `!webhook_secret` keeps admins at exactly the `admin` policy's list.
+  # - archived: stamp_summary_on_archive updates the summary of an archived
+  #   book, which `admin` (draft/published only) does not permit.
+  - name: automation
+    description: System-workflow permissions; not granted to any role by name.
+    permissions:
+      - kind: update
+        status:
+          - draft
+        properties:
+          - "*"
+          - "!webhook_secret"
+      - kind: update
+        status:
+          - archived
+        properties:
+          - summary
+  - name: admin
+    description: Full control over every book.
+    permissions:
+      - kind: view
+        properties:
+          - "*"
+        status:
+          - draft
+          - published
+          - archived
+        includes:
+          - "*"
+        lifecycle: true
+      - kind: create
+        properties:
+          - title
+          - author_id
+          - summary
+          - isbn
+          - genre
+          - page_count
+          - price_cents
+          - published_on
+          - cover_url
+          - cover_image_id
+          - featured
+          - blurb_budget_usd
+        status:
+          - draft
+        required_properties:
+          - title
+          - author_id
+      - kind: update
+        properties:
+          - title
+          - author_id
+          - summary
+          - isbn
+          - genre
+          - page_count
+          - price_cents
+          - published_on
+          - cover_url
+          - cover_image_id
+          - featured
+          - blurb_budget_usd
+          # books/describe_cover writes it. A `run_as: system` run holds every
+          # policy but still needs one naming the property.
+          - cover_description
+          - board_rank
+        status:
+          - draft
+          - published
+      - kind: delete
+        status:
+          - draft
+      - kind: transition
+        from:
+          - draft
+        to:
+          - published
+      - kind: transition
+        from:
+          - published
+        to:
+          - archived
+      - kind: transition
+        from:
+          - archived
+        to:
+          - published
+      # Who may *fire* the ISBN audit. It rode on the workflow's own
+      # `policies:` until who-may-run moved onto the spec; the status list
+      # mirrors the trigger's, because a gate that disagreed with the trigger
+      # would offer an action the dispatch then refuses. Firing is all the
+      # admin does here — the run itself is the system's, under the
+      # `isbn_audit` grant (ADR-0091).
+      # A digest of the book's reviews (books/review_digest).
+      - kind: workflow
+        workflows:
+          - review_digest
+        status:
+          - published
+      - kind: workflow
+        workflows:
+          - isbn_audit
+        status:
+          - published
+      # Without this the workflow is undispatchable: a manual trigger is fired
+      # through a `kind: workflow` permission, and nothing — not validation,
+      # not boot — reports a workflow no policy can reach. The symptom is a
+      # `not_allowed` on the mutation and no run row at all.
+      - kind: workflow
+        workflows:
+          - budgeted_blurb
+        status:
+          - draft
+          - published
+      # The declared Viewed File demo (ADR-0114): an agent shown the uploaded
+      # cover. The pulled half lives on members/reading_desk.
+      - kind: workflow
+        workflows:
+          - describe_cover
+        status:
+          - draft
+          - published
+  # A read-only policy handed to the `patron` global role: patrons browse the
+  # published catalogue but change nothing.
+  - name: catalogue
+    description: Browse the published catalogue.
+    permissions:
+      - kind: view
+        properties:
+          - title
+          - author_id
+          - author_name
+          - summary
+          - isbn
+          - genre
+          - page_count
+          - price_cents
+          - published_on
+          - cover_url
+          # The uploaded cover. Listing the file property is what lets a
+          # patron — and the reading desk's agent, which acts as one — look at
+          # it (ADR-0114). `cover_description` is deliberately left out: with
+          # it, the desk quotes a stored description instead of looking.
+          - cover_image_id
+          - featured
+          - review_count
+          - average_rating
+        status:
+          - published
+        includes:
+          - author
+# A grant anchored on one book, for the `isbn_audit` workflow's
+# [[Agent Sandbox]] (ADR-0091).
+#
+# The workflow runs as the system, so its box is authorised by a
+# [[Share Token]] minted on the book being audited, and *this* is that token's
+# whole authority — there is no acting identity behind it to attenuate and no
+# [[Permission Mask]] beside it.
+#
+# It confers the read-only `catalogue` policy rather than `admin`, and it is
+# anchored: the box sees the one book it was asked about and that book's author,
+# through a patron's view of them. Not every book, not every property, not a
+# draft. An agent auditing a record against a publisher's data needs to read
+# that record, and nothing here lets it do anything else — which is the point of
+# putting the narrowing on the grant, where the server enforces it, rather than
+# on a mask the box could only be told about.
+grants:
+  - name: isbn_audit
+    description: >-
+      Read one book and its author, as the catalogue shows them — the surface
+      the ISBN audit's sandbox acts with.
+    policies:
+      - catalogue
+    # The author reached the way the book already points at them. A hop, not a
+    # second anchor: `authors` is in scope only for the author of *this* book.
+    related:
+      - model: authors
+        policies:
+          - catalogue
+        joins:
+          - kind: internal
+            foreign_key: author_id
+properties:
+  - name: title
+    description: The book's title.
+    schema:
+      kind: string
+      required: true
+    storage:
+      kind: standard
+      storage_type: character varying
+      not_null: true
+      index: standard
+  - name: author_id
+    description: The author who wrote this book.
+    schema:
+      kind: string
+      format: uuid
+      required: true
+    foreign_key_to: authors
+    storage:
+      kind: standard
+      storage_type: uuid
+      not_null: true
+      index: standard
+  - name: author_name
+    description: The author's name, cached from the authors record for cheap display and sorting.
+    schema:
+      kind: string
+    editable: false
+    filterable: false
+    storage:
+      kind: cached
+      index: standard
+      source:
+        foreign_key: author_id
+        property: name
+  - name: co_author_ids
+    description: >-
+      Any further authors credited on the book. An array foreign key: each id
+      names an authors record, and the column carries no FK constraint.
+    schema:
+      kind: array
+      items:
+        kind: string
+        format: uuid
+        required: true
+    foreign_key_to: authors
+    sortable: false
+    storage:
+      kind: standard
+      storage_type: uuid[]
+      not_null: true
+      default_expr: array()
+  - name: summary
+    description: A short synopsis of the book.
+    schema:
+      kind: string
+    filterable: false
+    storage:
+      kind: standard
+      storage_type: text
+  # DEMO (ADR-0059): an Encrypted Storage property. Stored AES-GCM-encrypted at
+  # rest, and (biconditionally) marked `sensitivity: password`. A workflow reads
+  # its decrypted plaintext but the value stays Sensitive — the engine re-encrypts
+  # it at every persistence boundary and its egress is gated — see
+  # workflows/books/send_secret_on_publish.yaml.
+  # Written by books/describe_cover (ADR-0114), whose agent is shown the
+  # uploaded `cover_image_id` and describes what is on it. Editable because
+  # the workflow's `update_model` write is: a non-editable property is dropped
+  # from every write, a workflow's included (ADR-0097).
+  - name: cover_description
+    description: A model's description of the uploaded cover image.
+    schema:
+      kind: string
+    filterable: false
+    storage:
+      kind: standard
+      storage_type: text
+  - name: webhook_secret
+    description: A secret token sent to the book's webhook when it is published.
+    schema:
+      kind: string
+      sensitivity: password
+    storage:
+      kind: encrypted
+  - name: slug
+    description: URL-safe identifier generated from the title by the generate_book_slug workflow plugin.
+    schema:
+      kind: string
+    editable: false
+    hidden: true
+    storage:
+      kind: standard
+      storage_type: character varying
+      index: standard
+  - name: isbn
+    description: The 13-digit ISBN, if known.
+    schema:
+      kind: string
+      maxLength: 17
+    storage:
+      kind: standard
+      storage_type: character varying
+      # The showcase's standard-storage normalizer: an Easel expression a BEFORE
+      # trigger applies to this column on every insert and update. An ISBN-10's
+      # check digit can be an X, so it is stored upper case whatever was typed
+      # and a lookup by ISBN matches. Like every normalizer it reads the row
+      # being written — including the column it writes, which is allowed — and
+      # has to answer the same thing every time, so it may not read the clock.
+      expression: .isbn.upcase()
+  - name: genre
+    description: The book's primary genre.
+    schema:
+      kind: string
+      enum:
+        - fiction
+        - nonfiction
+        - mystery
+        - science_fiction
+        - fantasy
+        - biography
+        - childrens
+        - poetry
+    itemset: book_genres
+    storage:
+      kind: standard
+      storage_type: character varying
+      index: standard
+  - name: blurb_budget_usd
+    description: >-
+      What `books/budgeted_blurb` may spend on model calls for this book, in US
+      dollars. Null takes the workflow's own default.
+
+      A **record** property rather than a dispatch input, and deliberately: a
+      [[Spend Budget]]'s ceiling must be total over the entry Item, because a
+      ceiling that cannot be evaluated fails the turn rather than quietly
+      vanishing (ADR-0110). A column is always present on the Item and merely
+      sometimes null, which is exactly what `coalesce` is for; an optional key
+      on a dispatch's `user_input` can be *absent*, and a missing property is
+      an evaluation error that `coalesce` propagates rather than rescues.
+    schema:
+      kind: number
+      min: 0
+    storage:
+      kind: standard
+      storage_type: double precision
+
+  - name: agent_cost_microcents
+    description: >-
+      What every agent run *about this book* has cost, in [[Microcent]]s — a
+      millionth of a cent. The [[Run Projection]] of ADR-0111, and the pair to
+      `blurb_budget_usd` above: one is the ceiling, this is the meter.
+
+      Nothing here says how to render it and nothing should: the framework
+      declares the unit in `fact: spend` and fills in the presentation, so
+      `31275` reads as `0.0313¢` without this spec repeating a decision it did
+      not make.
+
+      Note the two carry different units on purpose. A ceiling is written by a
+      person, so it is in dollars; a meter is summed by the engine, so it is in
+      the integer unit the [[Metered Turn]]s it adds up are counted in. The
+      name of each says which, because that is the only thing standing between
+      a reader and a hundred-thousand-fold mistake.
+
+      The workflow engine writes it and nothing else may: a client's value is
+      dropped like any `editable: false` property, and a workflow's
+      `update_model` is refused outright, because a hand-written value would
+      disagree with the metered rows the column is a sum of and every later
+      nudge would carry the error forward.
+
+      It sums **every** workflow triggered from this book, not just the
+      budgeted one — `books/curate_book` is agentic too, so a book that was
+      never blurbed still carries a cost. Which workflow spent what is the
+      Cost page's question, not this column's.
+
+      Null rather than zero until something measurable is banked: an unpriced
+      call is not a free one (ADR-0110), so a zero here would claim a
+      measurement nobody made.
+    schema:
+      kind: number
+      integer: true
+      min: 0
+    editable: false
+    storage:
+      kind: run_projection
+      fact: spend
+
+  - name: page_count
+    description: Number of pages.
+    schema:
+      kind: number
+      integer: true
+      min: 1
+    storage:
+      kind: standard
+      storage_type: integer
+  - name: price_cents
+    description: Replacement price in cents (shown as dollars).
+    schema:
+      kind: number
+      integer: true
+      presentation: dollar_cents
+    storage:
+      kind: standard
+      storage_type: integer
+  - name: published_on
+    description: The date this edition was published.
+    schema:
+      kind: string
+      format: date
+    storage:
+      kind: standard
+      storage_type: date
+  - name: cover_url
+    description: A link to the cover image.
+    schema:
+      kind: string
+      format: url
+    filterable: false
+    storage:
+      kind: standard
+      storage_type: character varying
+  # A File-Reference Property (ADR-0064): a UUID FK to the `file_uploads` System
+  # Spec, holding an uploaded cover image. Set through the `file_upload_field`
+  # form block, which uploads the file and stores only its id; the server
+  # attaches the file on save and detaches it when the reference is cleared or
+  # replaced. Must be `uuid` storage with `on_delete: restrict`.
+  - name: cover_image_id
+    description: An uploaded cover image for the book.
+    schema:
+      kind: string
+      format: uuid
+    filterable: false
+    foreign_key_to: file_uploads
+    storage:
+      kind: standard
+      storage_type: uuid
+      on_delete: restrict
+  - name: featured
+    description: Whether the book is featured on the home dashboard.
+    schema:
+      kind: boolean
+      presentation: check
+      default:
+        kind: boolean
+        value: false
+    storage:
+      kind: standard
+      storage_type: boolean
+      not_null: true
+      default_expr: "false"
+      # The display-shelf role grants `read` filtered on this column, so every
+      # permission check for that role tests it once per candidate row.
+      index: standard
+  - name: review_count
+    description: How many published reviews this book has, rolled up from reviews.
+    schema:
+      kind: number
+      integer: true
+    editable: false
+    storage:
+      kind: aggregate
+      method: count
+      source:
+        model: reviews
+        foreign_key: book_id
+        status:
+          - published
+  - name: rating_total
+    description: Sum of all published review ratings, rolled up from reviews.
+    schema:
+      kind: number
+      integer: true
+    editable: false
+    hidden: true
+    storage:
+      kind: aggregate
+      method: sum
+      source:
+        model: reviews
+        foreign_key: book_id
+        property: rating
+        status:
+          - published
+  - name: average_rating
+    description: Mean published rating (1–5), computed in-row from the rollups.
+    schema:
+      kind: number
+    editable: false
+    storage:
+      kind: calculated
+      # double precision (not numeric) — the seed/model-store DbType map supports
+      # float8 but not numeric, and f64 is the language's own number (ADR-0083),
+      # so the column stores exactly what the formula computed.
+      storage_type: double precision
+      index: standard
+      # The rounding is said rather than left to the assignment cast: a cast into
+      # an integer type ties to even, and `.round()` ties away from zero. Nothing
+      # here leans on the cast, because the column is already f64.
+      formula: if(.review_count.gt(0), .rating_total.divide_by(.review_count).round(2), 0)
+  - name: reviews_at_shelving
+    description: >-
+      How many published reviews the book carried the last time its catalogue
+      standing was set — published onto the shelf, or archived off it.
+      `review_count` beside it keeps moving as reviews come in; this one is the
+      standing the shelving decision was actually made on.
+    schema:
+      kind: number
+      integer: true
+    # Read-only and nullable like every [[Snapshot]]: the capture is the only
+    # thing that writes it, and a book still `draft` has never been shelved.
+    editable: false
+    storage:
+      # The third kind under a `snapshot:` block, and the one whose capture is
+      # a set-based query: the correlated `COUNT` the maintained
+      # `review_count` above uses for its own back-fill, run once. Never the
+      # maintained `± 1` deltas — a delta adjusts a running total, and a
+      # capture has no running total to adjust (ADR-0093).
+      kind: aggregate
+      method: count
+      source:
+        model: reviews
+        foreign_key: book_id
+        status:
+          - published
+      snapshot:
+        # Both shelving decisions, which is what makes this the showcase's
+        # recapturing snapshot: published → archived is a move between two
+        # permitted statuses, and archived → published a re-entry. Each
+        # overwrites, because each is a decision taken afresh.
+        status:
+          - published
+          - archived
+  - name: board_rank
+    description: Drag-to-reorder position within a Board column (global LexoRank).
+    schema:
+      kind: string
+      format: lexoRank
+    filterable: false
+    hidden: true
+    storage:
+      kind: standard
+      storage_type: character varying
+      index: standard
+includes:
+  - kind: belongs_to
+    foreign_key: author_id
+    properties:
+      - name
+      - nationality

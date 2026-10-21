@@ -1,0 +1,56 @@
+# A third-party webhook (ADR-0140): `POST /api/endpoints/webhooks/catalogue`.
+#
+# The sender has no Keystone account, so the endpoint is admitted by the
+# `catalogue_webhook` Inbound Auth (config/inbound_auths.yaml) instead of a
+# session: the server checks the HMAC of the raw body against the
+# `X-Catalogue-Signature` header before anything parses it, and refuses with a
+# 401 on a mismatch. An admitted call runs as system with no user.
+#
+# The sender names the event only in a header, so `headers:` copies it onto the
+# entry Item as `.headers.x_catalogue_event`. Unlisted headers never reach the
+# run.
+version: 3
+run_as: system
+trigger:
+  kind: endpoint
+  path: webhooks/catalogue
+  auth:
+    inbound: catalogue_webhook
+  headers:
+    - X-Catalogue-Event
+  input_schema:
+    kind: object
+    properties:
+      title:
+        kind: string
+        required: true
+  returns:
+    - code: 200
+      body:
+        kind: object
+        properties:
+          event:
+            kind: string
+          title:
+            kind: string
+  timeout_seconds: 10
+
+nodes:
+  - id: acknowledge
+    title: Acknowledge the event
+    action:
+      kind: respond
+      status: 200
+
+connections:
+  - from_id: entry
+    to_id: acknowledge
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: ".headers.x_catalogue_event"
+          to: ".event"
+        - kind: copy
+          from: ".input.title"
+          to: ".title"

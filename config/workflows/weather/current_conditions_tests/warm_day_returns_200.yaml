@@ -1,0 +1,28 @@
+# Endpoint Test Case (ADR-0012 + ADR-0049): invoke the `weather` endpoint with
+# a canned Open-Meteo response and assert the `{ code, body }` it produces.
+#
+# `external.fetch_weather` stands in for the real HTTP call — it's the *raw* API
+# response body, which the node's `output_transform` then reshapes. So the run
+# never touches the network, and the assertion pins the whole computation:
+# the lifted fields, the Celsius→Fahrenheit maths, and the warm/cool flag.
+version: 3
+name: warm_day_returns_200
+description: A warm reading is returned with Fahrenheit computed and is_warm true.
+trigger:
+  kind: endpoint
+  input:
+    latitude: -33.87
+    longitude: 151.21
+external:
+  fetch_weather:
+    current:
+      temperature_2m: 25
+      wind_speed_10m: 10
+expect:
+  response:
+    code: 200
+    body:
+      temperature_c: 25
+      wind_kph: 10
+      temperature_f: 77
+      is_warm: true

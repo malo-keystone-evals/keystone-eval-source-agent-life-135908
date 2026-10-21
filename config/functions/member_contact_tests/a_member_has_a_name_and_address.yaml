@@ -1,0 +1,24 @@
+version: 3
+name: a_member_has_a_name_and_address
+description: A member's name comes from the membership and their address from the user account.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+          first_name: Alice
+          last_name: Reader
+    members:
+      - $alias: m1
+        fields:
+          user_id: u1
+          display_name: Alice R.
+trigger:
+  kind: call
+  input:
+    member_id: m1
+expect:
+  returns:
+    name: Alice R.
+    email: alice@example.com

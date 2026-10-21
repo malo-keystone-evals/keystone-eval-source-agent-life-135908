@@ -1,0 +1,45 @@
+# Going active captures checked_out_at, and the spec's loan_term_within_limit
+# invariant refuses a due date six months out as validation_failed. Only the
+# general handler takes that: its switch tells the member why.
+version: 3
+name: a_loan_past_the_term_is_refused
+description: A loan due more than 60 days out is refused and the member told why.
+now: 2026-06-01T00:00:00Z
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+          first_name: Alice
+          last_name: Reader
+    members:
+      - $alias: m1
+        fields:
+          user_id: u1
+          display_name: Alice R.
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    loans:
+      - $alias: l1
+        fields:
+          book_id: b1
+          member_id: m1
+          due_on: "2026-12-01"
+          status: requested
+trigger:
+  kind: manual
+  record: l1
+expect:
+  calls:
+    tell_member:
+      - body:
+          reason: "loans.loan_term_within_limit: A loan can run for at most 60 days from checkout; bring the due date back in."

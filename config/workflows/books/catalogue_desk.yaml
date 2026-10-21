@@ -1,0 +1,224 @@
+version: 3
+run_as: user
+trigger:
+  kind: endpoint
+  path: catalogue_desk
+  method: post
+  model_name: books
+  auth:
+    roles:
+      - librarian
+      - admin
+  input_schema:
+    kind: object
+    properties:
+      message:
+        kind: string
+        required: true
+  # Well above the 30s framework default. No sandbox here, but an agentic turn
+  # is still several model round trips plus a plugin write, and a timeout ends
+  # the stream mid-answer rather than degrading.
+  timeout_seconds: 180
+  response: stream
+thread:
+  # Who may *read* this conversation back is not declared here. It is a `read`
+  # policy on `workflow_threads`, granted by a role in config/roles.yaml — see
+  # `conversation_reader` there, which admits the people who have taken part.
+  #
+  # The read-only tier `circulation` used to get from a `thread.read` list here
+  # is a grant now too, and still not declared here: a filtered `read` grant on
+  # `workflow_threads` whose filter names this workflow's path. Front-desk staff
+  # follow these conversations without being able to send to them — sending is
+  # the trigger's `auth.roles` above — and no other workflow's threads come with
+  # it. Their tier stops at the thread rows: ledger events carry a `thread_id`
+  # and no path of their own, so the transcript stays with the participants.
+  #
+  # Worth knowing if you move this workflow: the filter matches on the literal
+  # path `books/catalogue_desk`, so renaming the file or its model renames the
+  # threads' `workflow_path` and the tier silently stops matching.
+  record: trigger
+  ledger:
+    input: ".input.message"
+description: A shared, per-book conversation for catalogue staff. Streams live, keeps its transcript on the book forever, and can stage and apply edits to the record with the caller's own permissions.
+nodes:
+  - id: desk
+    title: Talk to catalogue staff about this book
+    action:
+      kind: agentic_loop
+      model:
+        profile:
+          kind: static
+          name: mini-fast
+        credential:
+          kind: system
+          name: open_ai_api
+      system_prompt: |
+        You are the catalogue desk assistant for a small public library. You are
+        talking to catalogue staff about ONE book, and this conversation stays
+        attached to that book — colleagues will read it later to understand why
+        the entry looks the way it does. Write with that reader in mind.
+
+        The book, as it currently stands:
+        - id: {.book_id}
+        - title: {.title}
+        - author: {.author_name}
+        - genre: {.genre}
+        - isbn: {.isbn}
+        - pages: {.page_count}
+        - summary: {.summary}
+
+        Notes left on this conversation so far: {.notes.to_string()}
+
+        How to work:
+        - If a request is ambiguous or missing something you would need to write
+          a good record, ask for it in plain prose and stop. Do not guess.
+        - Use `propose_change` once per field you intend to change. Then state
+          the whole change set back to them and wait for an explicit yes.
+        - Only after they confirm, call `apply_book_changes`. It applies exactly
+          what was staged — never re-state the values there.
+        - If it reports fields that were NOT applied, say so plainly. That means
+          the permission did not cover them, not that you got it wrong.
+        - Use `add_note` for context worth keeping that is not a field: why an
+          edit was made, what a previous edition said, what to check later.
+
+        Be concise. You are talking to colleagues, not customers.
+      state:
+        name: catalogue
+        init:
+          book_id: ".book_id"
+        set:
+          title: ".title"
+          author_name: ".author_name"
+          genre: ".genre"
+          isbn: ".isbn"
+          page_count: ".page_count"
+          summary: ".summary"
+      input_schema:
+        kind: object
+        properties:
+          message:
+            kind: string
+            required: true
+          book_id:
+            kind: string
+          title:
+            kind: string
+          author_name:
+            kind: string
+          genre:
+            kind: string
+          isbn:
+            kind: string
+          page_count:
+            kind: number
+          summary:
+            kind: string
+      force_tool_call: false
+      termination:
+        max_iterations: 10
+      tools:
+        - kind: state
+          name: propose_change
+          description: Stage one field edit for this book. Call it once per field. Staging does not write anything — you must confirm with the user and then call apply_book_changes.
+          input:
+            kind: object
+            properties:
+              field:
+                kind: string
+                required: true
+                description: "One of: title, summary, genre, isbn, page_count."
+              value:
+                kind: string
+                required: true
+                description: The complete new value for that field.
+          state_update:
+            staged: '.staged.concat(object("field", $input.field, "value", $input.value))'
+          message: Staged {$input.field} = "{$input.value}". Nothing is written yet — confirm the full change set with the user, then apply it.
+          activity:
+            label: Staging {$input.field}
+            result: "{$output.message}"
+        - kind: plugin
+          plugin: apply_book_changes
+          enabled: ".staged.length().gt(0)"
+          activity:
+            label: Applying the changes
+            result: "{$output.message}"
+        - kind: state
+          name: add_note
+          description: Leave a note on this book's conversation — context worth keeping that is not a field value.
+          input:
+            kind: object
+            properties:
+              note:
+                kind: string
+                required: true
+          state_update:
+            notes: ".notes.concat($input.note)"
+          message: Noted.
+          activity:
+            label: Leaving a note
+      narrate:
+        text: fragments
+        errors: visible
+connections:
+  - from_id: entry
+    to_id: desk
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: ".input.message"
+          to: ".message"
+        - kind: copy
+          from: ".id"
+          to: ".book_id"
+        - kind: copy
+          from: ".title"
+          to: ".title"
+        - kind: copy
+          from: ".author_name"
+          to: ".author_name"
+        - kind: copy
+          from: ".genre"
+          to: ".genre"
+        - kind: copy
+          from: ".isbn"
+          to: ".isbn"
+        - kind: copy
+          from: ".page_count"
+          to: ".page_count"
+        - kind: copy
+          from: ".summary"
+          to: ".summary"
+agent_states:
+  catalogue:
+    schema:
+      kind: object
+      properties:
+        book_id:
+          kind: string
+        title:
+          kind: string
+        author_name:
+          kind: string
+        genre:
+          kind: string
+        isbn:
+          kind: string
+        page_count:
+          kind: number
+        summary:
+          kind: string
+        staged:
+          kind: array
+          items:
+            kind: object
+            properties:
+              field:
+                kind: string
+              value:
+                kind: string
+        notes:
+          kind: array
+          items:
+            kind: string

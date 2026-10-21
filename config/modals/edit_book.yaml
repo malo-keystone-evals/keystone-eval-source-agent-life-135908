@@ -1,0 +1,49 @@
+# The book create/edit modal, upgraded to a `tabbed_form` so its fields split
+# across Details / Metadata / Pricing tabs. The Metadata tab pulls in the shared
+# `book_editorial` fragment. Subject is a `record`, so it serves both create and
+# edit; `record_fields` renders the spec properties scoped by the user's
+# permissions and the record's status.
+version: 3
+name: edit_book
+icon_id: fa/solid/book
+description: Create a new book or edit an existing one.
+content:
+  kind: tabbed_form
+  tabs:
+    - name: details
+      title: Details
+      icon_id: fa/solid/circle-info
+      kind: form
+      blocks:
+        - kind: record_fields
+          properties:
+            - title
+            - author_id
+            - co_author_ids
+            - summary
+        - kind: file_upload_field
+          label: Cover image
+          path_key: properties.cover_image_id
+          accept: image/*
+    - name: metadata
+      title: Metadata
+      icon_id: fa/solid/tags
+      kind: form
+      blocks:
+        - kind: fragment
+          fragment_name: book_editorial
+    - name: pricing
+      title: Pricing
+      icon_id: fa/solid/dollar-sign
+      kind: form
+      blocks:
+        - kind: number_field
+          label: Replacement price
+          path_key: properties.price_cents
+        - kind: checkbox_field
+          label: Feature on the dashboard
+          path_key: properties.featured
+subject:
+  kind: record
+  model_name: books
+  initial_status: draft

@@ -1,0 +1,13 @@
+nodes:
+  confirm:
+    x: 720.0
+    "y": 120.0
+  entry:
+    x: 120.0
+    "y": 210.0
+  reinvite:
+    x: 720.0
+    "y": 330.0
+  retarget:
+    x: 390.0
+    "y": 210.0

@@ -1,0 +1,105 @@
+version: 3
+run_as: system
+trigger:
+  kind: on_create
+  model_name: reviews
+  statuses:
+    - published
+description: When a review is published, load its book, ask the review_tone Function what the rating says, and post a notification carrying the tone. A rating the Function refuses still posts, as "unrated", down its declared error exit.
+nodes:
+  - id: load_book
+    title: Load the reviewed book
+    action:
+      kind: fetch_model
+      model_name: books
+  - id: tone
+    title: What does the rating say?
+    action:
+      kind: call_function
+      function: review_tone
+  - id: notify
+    title: Post a review notification
+    action:
+      kind: api_call
+      method: post
+      path: /hooks/new-review
+      input_schema:
+        kind: object
+        properties:
+          title:
+            kind: string
+          rating:
+            kind: number
+          tone:
+            kind: string
+      request_mode: per_item
+      external_api: notifications
+      credential:
+        kind: system
+        name: notifications_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: object("event", "new_review", "book", .title, "rating", .rating, "tone", .tone)
+            to: ".body"
+      output_schema:
+        kind: object
+        properties: {}
+      output_transform:
+        steps: []
+      response_format:
+        kind: json
+      output_mode: single
+      sends_sensitive_data: false
+connections:
+  - from_id: entry
+    to_id: load_book
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: ".book_id"
+          to: ".id"
+        - kind: copy
+          from: ".rating"
+          to: ".context.rating"
+  - from_id: load_book
+    to_id: tone
+    transform:
+      steps:
+        - kind: copy
+          from: ".book.title"
+          to: ".context.book_title"
+        - kind: copy
+          from: ".context.rating"
+          to: ".rating"
+  - from_id: tone
+    to_id: notify
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.book_title"
+          to: ".title"
+        - kind: copy
+          from: ".context.rating"
+          to: ".rating"
+        - kind: copy
+          from: ".tone"
+          to: ".tone"
+  - from_id: tone
+    to_id: notify
+    kind: error
+    filters:
+      - filter_selector: '.name.eq("rating_out_of_range")'
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.book_title"
+          to: ".title"
+        - kind: copy
+          from: ".context.rating"
+          to: ".rating"
+        - kind: copy
+          from: '"unrated"'
+          to: ".tone"
+    label: rating out of range

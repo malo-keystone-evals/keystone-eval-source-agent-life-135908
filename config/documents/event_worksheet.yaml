@@ -1,0 +1,347 @@
+# The attendee worksheet an organiser prints before a reading-club session —
+# the example project's [[Document Template]] (ADR-0094), and the fixture stage
+# 03 proves `render_document` with.
+#
+# It is a real document with a real job: the club's logo at the top, the
+# session's topic, the book being discussed with its cover, discussion
+# questions with ruled space to write in, and a sign-in sheet the organiser
+# passes round. That is why it is a *document* rather than a screen — somebody
+# prints it and hands it out.
+#
+# Rendered automatically by `events/event_worksheet` when an event is created
+# (`on_create`), so no button and no endpoint: creating the meeting produces
+# the paperwork.
+#
+# Like the rest of modern-project this is also a SHOWCASE: it exercises every
+# block kind and nearly every option, so an author reading one file sees the
+# whole vocabulary and a schema change has something real to break against.
+#
+# Note what is NOT here: any mention of where the data comes from. The template
+# declares the SHAPE it wants and the workflow prepares it (D17).
+version: 1
+name: event_worksheet
+description: >-
+  The printable attendee worksheet for a reading-club session — topic, book,
+  discussion questions and a sign-in sheet. Rendered on event creation and
+  attached to events.worksheet_file_id.
+
+params:
+  kind: object
+  required: true
+  properties:
+    event:
+      kind: object
+      required: true
+      properties:
+        id: { kind: string, required: true }
+        title: { kind: string, required: true }
+        starts_at: { kind: string, required: true }
+        venue_name: { kind: string }
+        capacity: { kind: number }
+    club:
+      kind: object
+      required: true
+      properties:
+        id: { kind: string, required: true }
+        name: { kind: string, required: true }
+        description: { kind: string }
+        meeting_format: { kind: string }
+    # The book under discussion. Optional: a club between books still gets a
+    # worksheet, and the book panel simply does not render.
+    book:
+      kind: object
+      properties:
+        id: { kind: string }
+        title: { kind: string }
+        author_name: { kind: string }
+        summary: { kind: string }
+        genre: { kind: string }
+        page_count: { kind: number }
+    has_book:
+      kind: boolean
+      required: true
+    generated_on:
+      kind: string
+      required: true
+    # The prompts, supplied by the workflow rather than hard-coded here, so an
+    # organiser can vary them per club later without touching the layout.
+    questions:
+      kind: array
+      required: true
+      items: { kind: string }
+
+page:
+  size: a4
+  orientation: portrait
+  margins: { top: 34, right: 40, bottom: 40, left: 40 }
+  default_style:
+    size: 10
+    color: "#222222"
+
+  # A faint mark under every page, so a photocopied worksheet still reads as
+  # the library's.
+  watermark:
+    image: assets/watermark.png
+    opacity: 0.05
+
+  header:
+    # The cover page carries the club's own logo — a RECORD image (D12),
+    # uploaded through the club's form and addressed by model, record id and
+    # property. Furniture is expanded in the root scope, so it reads `params`
+    # and never a loop variable.
+    first:
+      height: 72
+      blocks:
+        - kind: columns
+          gap: 14
+          children:
+            - width: 90
+              blocks:
+                - kind: image
+                  record:
+                    model: clubs
+                    id: "{.club.id}"
+                    property: logo_file_id
+                  height: 46
+                  fit: contain
+                  # A club with no logo yet prints without one rather than
+                  # failing the worksheet (D25).
+                  on_error: skip
+            - width: { fr: 1 }
+              blocks:
+                - kind: text
+                  style: { size: 9, color: "#666666" }
+                  runs: [{ text: "{.club.name}" }]
+                - kind: text
+                  style: { size: 8, color: "#999999" }
+                  runs: [Reading club worksheet]
+    # Interior pages just say which session they belong to.
+    default:
+      height: 40
+      blocks:
+        - kind: text
+          align: right
+          style: { size: 8, color: "#666666" }
+          runs: [{ text: "{.club.name} — {.event.title}" }]
+
+  footer:
+    default:
+      height: 26
+      blocks:
+        - kind: text
+          align: right
+          style: { size: 8, color: "#666666" }
+          runs:
+            - "Page "
+            - { page_number: true }
+            - " of "
+            - { page_count: true }
+
+body:
+  # ------------------------------------------------------------- the session
+  - kind: text
+    style: { size: 22, bold: true, color: "#11416E" }
+    runs: [{ text: "{.event.title}" }]
+
+  - kind: text
+    space_after: 10
+    style: { size: 11, italic: true, color: "#666666" }
+    runs: [{ text: "{.club.description}" }]
+
+  - kind: table
+    columns: [96, { fr: 1 }]
+    border: { width: 0.5, color: "#CCCCCC" }
+    inner_border: { width: 0.25, color: "#DDDDDD" }
+    cell_padding: { top: 5, right: 6, bottom: 5, left: 6 }
+    rows:
+      - [{ content: Club, fill: "#DAE5F6" }, "{.club.name}"]
+      - [{ content: Starts, fill: "#DAE5F6" }, "{.event.starts_at}"]
+      - [{ content: Venue, fill: "#DAE5F6" }, "{.event.venue_name}"]
+      - [{ content: Format, fill: "#DAE5F6" }, "{.club.meeting_format}"]
+      - [{ content: Places, fill: "#DAE5F6" }, "{.event.capacity}"]
+
+  - kind: spacer
+    height: 16
+
+  # -------------------------------------------------------------- the book
+  # `when` removes the whole panel for a club between books (D24) — the
+  # worksheet is still worth printing without it.
+  - kind: text
+    when: "{.has_book}"
+    style: { size: 14, bold: true, color: "#11416E" }
+    space_after: 6
+    runs: [This session's book]
+
+  - kind: columns
+    when: "{.has_book}"
+    gap: 18
+    children:
+      - width: 130
+        blocks:
+          # The book's cover, again a record image — this time off `books`.
+          - kind: image
+            record:
+              model: books
+              id: "{.book.id}"
+              property: cover_image_id
+            height: 180
+            fit: contain
+            max_long_edge: 1200
+            border: { width: 0.5, color: "#11416E" }
+            on_error: skip
+      - width: { fr: 1 }
+        blocks:
+          - kind: text
+            style: { size: 13, bold: true }
+            runs: [{ text: "{.book.title}" }]
+          - kind: text
+            space_after: 6
+            style: { color: "#666666" }
+            runs:
+              - { text: "by {.book.author_name}" }
+          - kind: text
+            space_after: 6
+            style: { size: 9 }
+            runs: [{ text: "{.book.summary}" }]
+          - kind: text
+            style: { size: 9, color: "#666666" }
+            runs:
+              - { text: "{.book.genre}" }
+              - " · "
+              - { text: "{.book.page_count}" }
+              - " pages"
+
+  - kind: text
+    when: "{.has_book.not()}"
+    style: { italic: true, color: "#8A6A2A" }
+    runs: [This club has not chosen its next book yet — bring a suggestion.]
+
+  - kind: page_break
+
+  # ----------------------------------------------------- the questionnaire
+  - kind: text
+    style: { size: 16, bold: true, color: "#11416E" }
+    space_after: 4
+    runs: [Discussion questions]
+
+  - kind: text
+    space_after: 12
+    style: { size: 9, color: "#666666" }
+    runs: [Jot a few notes before the session — there are no wrong answers.]
+
+  # A question and ruled space to answer it, per prompt. `min_rows` with an
+  # empty body is what gives an attendee lines to write on (D20): the table
+  # renders its filler rows and nothing else.
+  - kind: for_each
+    source: questions
+    as: question
+    blocks:
+      - kind: text
+        style: { bold: true }
+        space_after: 2
+        runs:
+          - { text: "{$index.plus(1)}. " }
+          - { text: "{.question}" }
+      - kind: table
+        columns: [{ fr: 1 }]
+        min_rows: 3
+        filler_row_height: 19
+        border: { width: 0 }
+        inner_border: { width: 0.25, color: "#CCCCCC" }
+        rows: []
+      - kind: spacer
+        height: 10
+
+  - kind: page_break
+
+  # -------------------------------------------------------- the sign-in sheet
+  - kind: text
+    style: { size: 16, bold: true, color: "#11416E" }
+    space_after: 4
+    runs: [Who came]
+
+  - kind: text
+    space_after: 10
+    style: { size: 9, color: "#666666" }
+    runs:
+      - { text: "Pass this round. {.event.capacity} places for this session." }
+
+  # `fill: rows` pads the table to the bottom of whichever page it ends on
+  # (D20), so an organiser always gets a full page of lines to collect names
+  # on rather than a stub. The rotated header keeps a narrow column readable.
+  - kind: table
+    columns: [{ fr: 2 }, { fr: 3 }, 34]
+    fill: rows
+    filler_row_height: 22
+    min_rows: 12
+    border: { width: 0.75, color: "#11416E" }
+    inner_border: { width: 0.25, color: "#BBBBBB" }
+    cell_padding: { top: 5, right: 6, bottom: 5, left: 6 }
+    header_rows:
+      - cells:
+          - { content: Name, fill: "#11416E", style: { color: "#FFFFFF", bold: true } }
+          - { content: What did you think?, fill: "#11416E", style: { color: "#FFFFFF", bold: true } }
+          - content: Read it?
+            fill: "#11416E"
+            rotate: cw90
+            valign: bottom
+            style: { color: "#FFFFFF", bold: true, size: 7 }
+    rows: []
+
+  - kind: spacer
+    height: 14
+
+  # A cell holding a `stack` of `check`es — the shape that makes a cell able to
+  # hold a container at all (D21). Static prompts, so the boxes print empty for
+  # someone to tick by hand.
+  - kind: table
+    columns: [{ fr: 1 }, { fr: 1 }]
+    border: { width: 0.5, color: "#CCCCCC" }
+    cell_padding: { top: 6, right: 8, bottom: 6, left: 8 }
+    rows:
+      - cells:
+          - content:
+              kind: stack
+              gap: 4
+              blocks:
+                - kind: text
+                  style: { bold: true, size: 9 }
+                  runs: [Organiser checklist]
+                - kind: check
+                  checked: "{false}"
+                  label: { runs: [Copies printed] }
+                - kind: check
+                  checked: "{false}"
+                  label: { runs: [Room booked] }
+                - kind: check
+                  checked: "{false}"
+                  label: { runs: [Next book chosen] }
+          - content:
+              kind: stack
+              gap: 4
+              blocks:
+                - kind: text
+                  style: { bold: true, size: 9 }
+                  runs: [Next session]
+                - kind: text
+                  style: { size: 9, color: "#666666" }
+                  runs: ["Agree a date before everyone leaves, and write it here:"]
+                - kind: framed
+                  margin: { top: 4, right: 0, bottom: 0, left: 0 }
+                  inner:
+                    kind: table
+                    columns: [{ fr: 1 }]
+                    min_rows: 2
+                    filler_row_height: 18
+                    border: { width: 0 }
+                    inner_border: { width: 0.25, color: "#CCCCCC" }
+                    rows: []
+
+  - kind: spacer
+    height: 12
+
+  - kind: text
+    align: center
+    style: { size: 8, color: "#999999" }
+    runs:
+      - { text: "{.club.name} · worksheet generated {.generated_on}" }

@@ -1,0 +1,44 @@
+# Club events. The venue (a ref-schema jsonb object) is shown by the read-only
+# venue_details data modal, opened outside the per-row action set.
+version: 4
+name: events_listing
+title: Events
+icon_id: fa/solid/calendar-days
+route:
+  section: community
+  path: /events
+  roles:
+    - admin
+    - librarian
+    - patron
+  order: 5
+content:
+  kind: listing
+  model_name: events
+  views:
+    - kind: table
+      default_sort:
+        column: starts_at
+        direction: asc
+      columns:
+        starts_at:
+          label: Starts
+          renderer:
+            kind: date_time
+            presentation: date_time_short
+  page_actions:
+    add_modal: edit_event
+  record_actions:
+    related_links:
+      - "*"
+    edit_modal: edit_event
+    show_status: true
+    # `fields:` draws the deprecated Item Details block, and declaring it
+    # reports `page/record-actions-fields-deprecated`. Kept deliberately: this
+    # model has no record page for the display to move to, so the example keeps
+    # a live instance of the shape the finding points away from.
+    fields:
+      - title
+      - club_name
+    modals:
+      - "*"

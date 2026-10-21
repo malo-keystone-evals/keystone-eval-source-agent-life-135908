@@ -1,0 +1,22 @@
+nodes:
+  check:
+    x: 390.0
+    "y": 330.0
+  confirm:
+    x: 1200.0
+    "y": 210.0
+  contact:
+    x: 930.0
+    "y": 210.0
+  entry:
+    x: 120.0
+    "y": 330.0
+  refuse_overdue:
+    x: 660.0
+    "y": 420.0
+  renew:
+    x: 660.0
+    "y": 210.0
+  tell_refused:
+    x: 630.0
+    "y": 270.0

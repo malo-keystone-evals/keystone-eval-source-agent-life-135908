@@ -1,0 +1,40 @@
+{
+  "_comment": [
+    "A sample `params` for this document — D28 tier 1, and the blob its preview renders against.",
+    "",
+    "Synthesised from the template's declared `params` schema, so the SHAPE is right and the",
+    "words are not: every string is its own property's name padded out to something that wraps,",
+    "and every array has three items because one cannot show that a row repeats.",
+    "",
+    "Edit it. Real sentences and real row counts are what make a preview worth reading, and this",
+    "file is checked in and reviewed precisely so that it can hold them."
+  ],
+  "event": {
+    "id": "Id sample text for the preview",
+    "title": "Title sample text for the preview",
+    "starts_at": "Starts At sample text for the preview",
+    "venue_name": "Venue Name sample text for the preview",
+    "capacity": 1234.56
+  },
+  "club": {
+    "id": "Id sample text for the preview",
+    "name": "Name sample text for the preview",
+    "description": "Description sample text for the preview",
+    "meeting_format": "Meeting Format sample text for the preview"
+  },
+  "book": {
+    "id": "Id sample text for the preview",
+    "title": "Title sample text for the preview",
+    "author_name": "Author Name sample text for the preview",
+    "summary": "Summary sample text for the preview",
+    "genre": "Genre sample text for the preview",
+    "page_count": 1234.56
+  },
+  "has_book": true,
+  "generated_on": "Generated On sample text for the preview",
+  "questions": [
+    "Question 1 sample text for the preview",
+    "Question 2 sample text for the preview",
+    "Question 3 sample text for the preview"
+  ]
+}

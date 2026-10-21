@@ -1,0 +1,9 @@
+kind: page
+framework: react
+name: weather
+# A whole-page plugin: config/pages/weather_page.yaml mounts it with
+# `content.kind: plugin`, so it renders as its own page with no bound record
+# (hence no `input.subject_model`). It calls the `weather` custom endpoint
+# (config/workflows/weather/current_conditions.yaml) through
+# `props.keystone.callEndpoint` and renders the result — the reference example
+# for driving a custom endpoint from a page plugin.

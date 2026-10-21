@@ -1,0 +1,51 @@
+.reading-time {
+  padding: 1rem 0;
+}
+
+.reading-time__title {
+  margin: 0 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.reading-time__estimate {
+  color: #333;
+}
+
+.reading-time__empty {
+  color: #888;
+  font-style: italic;
+}
+
+.reading-time__subtitle {
+  margin: 1.5rem 0 0.25rem;
+  font-size: 1rem;
+}
+
+.reading-time__note {
+  margin: 0 0 0.75rem;
+  max-width: 48ch;
+  color: #666;
+}
+
+.reading-time__paces {
+  border-collapse: collapse;
+  min-width: 18rem;
+}
+
+.reading-time__paces th,
+.reading-time__paces td {
+  padding: 0.25rem 1rem 0.25rem 0;
+  text-align: left;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.reading-time__paces th {
+  color: #666;
+  font-weight: 500;
+}
+
+/* The pace the headline estimate above is quoted at, so the table and the
+   estimate visibly agree. */
+.reading-time__pace--default td {
+  font-weight: 600;
+}

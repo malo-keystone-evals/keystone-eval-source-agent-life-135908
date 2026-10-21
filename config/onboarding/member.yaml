@@ -1,0 +1,52 @@
+# The project's one [[Onboarding Process]] (ADR-0110), and the shape the Brief
+# started from: a self-service signup has a `users` row the moment they verify
+# their email, and no `members` row at all — yet every page in the library
+# assumes one. So the account is assigned this process (by
+# `new_user_onboarding` on the email door, by an invitation naming it, or by
+# hand from the users listing), and the browser holds them inside a Focus
+# Layout until the membership exists.
+#
+# There is one step here and there is meant to be: the MVP is "a related record
+# must exist, and a form creates it". A second step would be another binding, a
+# second precondition reading it, and another modal — nothing else changes.
+version: 1
+name: member
+title: Become a member
+
+# Data Bindings in the Dashboard Template's shape, resolved by the same
+# resolver in the browser: a single-record-or-nothing lookup, in declaration
+# order, flattened to `{ id, ...properties }` or null.
+data:
+  # The acting user's own members row, if they have one. The query runs against
+  # the ordering-scoped context — `user` and the bindings above this one, which
+  # is none — so `.user.id` is the only value it can read, and that is exactly
+  # what pairs a member to their account (`members.user_id`).
+  membership:
+    spec: members
+    query:
+      steps:
+        - kind: copy
+          from: object("filters", array(object("kind", "single", "property", "user_id", "not", false, "values", array(.user.id))))
+          to: .
+
+steps:
+  - name: join
+    title: Join the library
+    description: >-
+      Tell us how you would like to be known around the library, and we will
+      set up your membership.
+    # The precondition is the whole of "a related record exists": a binding is
+    # single-record-or-nothing, so its truthiness *is* the question. Nothing
+    # here says `is_not_null` or names a kind — ADR-0110 D2 collapsed the
+    # anticipated precondition kinds to one Easel expression over
+    # `{ user, ...bindings }`.
+    precondition: .membership
+    # The form is a modal, and an ordinary one: its registry, its editor, its
+    # validation and its subjects already exist, so the Focus Layout renders
+    # the blocks of `join_library` rather than a second form language.
+    modal: join_library
+    # No `record:`, which is the interesting default (D4). A workflow-subject
+    # modal dispatches a manual run against a model and a record id, and the
+    # record this step is *about* — the members row — is what the run is going
+    # to create. So the anchor falls back to the user's own `users` row, and
+    # the `profile` policy in specs/users.yaml grants the workflow there.

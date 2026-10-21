@@ -1,0 +1,17 @@
+# A whole-page plugin driven by optional URL parameters. The `reports` page
+# plugin reads :year/:quarter from props.route_params; both are optional so the
+# nav link (no params) still resolves, defaulting the period.
+version: 4
+name: reports_page
+title: Reports
+icon_id: fa/solid/gauge-high
+route:
+  section: ops
+  path: /reports/:year?/:quarter?
+  roles:
+    - admin
+    - librarian
+  order: 2
+content:
+  kind: plugin
+  plugin_name: reports

@@ -1,0 +1,84 @@
+# External API definitions (ADR-0041/0042) — connection details only, no secrets.
+# One entry per Credential Kind the showcase exercises: `none` (open_meteo),
+# `api_key` (isbndb), and `http_bearer` (notifications). The secret behind each
+# non-`none` API is a System Credential (config/system_credentials.yaml) whose
+# value is set at runtime on the admin credentials page.
+
+# The public Open-Meteo forecast API — no key, no auth. Declaring it opts the
+# weather endpoint's api_call into the closed-by-default domain whitelist.
+- name: open_meteo
+  kind: none
+  default_base_url: https://api.open-meteo.com
+  allowed_domains:
+    - api.open-meteo.com
+
+# DEMO (ADR-0059): an external service the send_secret_on_publish workflow
+# posts to. httpbin.org/post echoes the request body back, so you can confirm
+# the encrypted `webhook_secret` arrived DECRYPTED on the wire — while the
+# persisted workflow run still holds it encrypted at rest. The node uses no
+# credential (an unauthenticated request), so nothing needs connecting on the
+# admin Credentials page; the whitelist below still applies.
+- name: echo
+  kind: http_bearer
+  default_base_url: https://httpbin.org
+  allowed_domains:
+    - httpbin.org
+
+# An API-key book-metadata service. The key rides in an `Authorization` header;
+# `default_headers` set the vendor-wide constants every call shares. Used by the
+# `enrich_book_metadata` endpoint workflow via `credential: {kind: system}`.
+- name: isbndb
+  kind: api_key
+  default_base_url: https://api2.isbndb.com
+  api_key_in: header
+  api_key_name: Authorization
+  default_headers:
+    Accept: application/json
+  allowed_domains:
+    - api2.isbndb.com
+
+# A bearer-token webhook the library posts to when a review is written. Demoes a
+# `http_bearer` credential on an api_call, plus an Error Edge catching http_5xx.
+- name: notifications
+  kind: http_bearer
+  default_base_url: https://hooks.example.com
+  allowed_domains:
+    - hooks.example.com
+
+# The public Open Library search API — no key, no auth. Feeds the
+# books/curate_book agentic workflow with raw catalogue metadata for the model
+# to distil (ADR-0063 demo).
+- name: open_library
+  kind: none
+  default_base_url: https://openlibrary.org
+  allowed_domains:
+    - openlibrary.org
+
+# Anthropic — the model provider behind every `agentic_loop` node's
+# `model.credential` (ADR-0063). An ordinary api_key External API: the key is a
+# System Credential set at runtime on the admin credentials page, never
+# committed. (`api_key_in`/`api_key_name` describe the vendor's REST auth for
+# api_call nodes; agentic nodes resolve the same credential through the
+# engine's LlmKeyResolver and the provider adapter sets its own headers.)
+- name: anthropic
+  kind: api_key
+  default_base_url: https://api.anthropic.com
+  api_key_in: header
+  api_key_name: x-api-key
+  allowed_domains:
+    - api.anthropic.com
+
+# OpenAI — the alternative model provider for `agentic_loop` nodes
+# (`model.provider: open-ai`). Like `anthropic` above, the key is a System
+# Credential set at runtime; agentic nodes resolve it through the engine's
+# LlmKeyResolver and the OpenAI adapter targets api.openai.com/v1/responses
+# with its own headers. (Direct api_call use would additionally need the
+# `Bearer ` prefix OpenAI's REST auth expects, which an `api_key` header
+# can't express — this entry exists for the agentic path.)
+- name: open_ai
+  kind: api_key
+  default_base_url: https://api.openai.com
+  api_key_in: header
+  api_key_name: Authorization
+  allowed_domains:
+    - api.openai.com

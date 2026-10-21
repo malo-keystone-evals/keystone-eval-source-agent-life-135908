@@ -1,0 +1,9 @@
+version: 3
+name: five stars is praise
+trigger:
+  kind: call
+  input:
+    rating: 5
+expect:
+  returns:
+    tone: praise

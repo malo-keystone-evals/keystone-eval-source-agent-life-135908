@@ -1,0 +1,152 @@
+version: 4
+name: books_listing
+title: Books
+icon_id: fa/solid/book
+route:
+  path: /books
+  section: library
+  roles:
+    - admin
+    - librarian
+    - patron
+  order: 1
+  hidden: null
+content:
+  kind: listing
+  model_name: books
+  views:
+    - kind: table
+      default_sort:
+        column: title
+        direction: asc
+      columns:
+        # The Identity Column, addressed by the one key that names no property
+        # (ADR-0095). It accepts `width`, `label` and `decoration`; the other
+        # four are refused, because it is always the pinned first column and
+        # the framework renders it from the spec's `identity:` rather than
+        # from a property value. The label heads it "Book title" in place of
+        # the spec's "Book" display name, and the width gives that title more
+        # room than the 200 a single-value column defaults to.
+        identity:
+          label: Book title
+          width: 280
+          visibility: null
+          persistent: null
+          decoration: null
+          position: null
+          renderer: null
+        author_name:
+          label: Author
+          # A fixed width, not a minimum: this column lays out at 240 whatever
+          # the viewport, wider than the 200 its renderer would have defaulted
+          # it to.
+          width: 240
+          visibility: null
+          persistent: null
+          decoration: null
+          position: null
+          renderer: null
+        buzz:
+          label: Buzz
+          width: null
+          visibility: null
+          persistent: null
+          decoration: null
+          position: null
+          renderer:
+            kind: custom
+            properties:
+              - review_count
+              - average_rating
+            text: '.review_count.to_string().concat(" reviews")'
+        average_rating:
+          label: Rating
+          width: null
+          visibility: null
+          persistent: null
+          decoration: null
+          position: null
+          renderer: null
+    - kind: board
+      card:
+        summary_property: summary
+        label:
+          property: genre
+          colors:
+            childrens: yellow
+            fiction: blue
+            fantasy: pink
+            biography: orange
+            nonfiction: green
+            mystery: purple
+            poetry: gray
+            science_fiction: teal
+        # A tag pill row on the board's cards. `genre` again, and deliberately:
+        # a pill filters the listing to its own value once its card is selected
+        # (ADR-0095), so a board needs one property that is both drawn on a card
+        # and filterable for the gesture to be walkable at all. It carries no
+        # `colors`, so the pills come out neutral and the coloured strip above
+        # them stays the one thing painting the genre.
+        tags:
+          - property: genre
+      ordering:
+        kind: position
+        property: board_rank
+    # A Cards View: the same books in one flat list with statuses mixed rather
+    # than grouped. It reuses the Board's `card:` chrome shape but redeclares
+    # its own genre → Label Color mapping (the mapping is per-view, not on the
+    # enum — ADR-0034), and carries no `columns`/`ordering`: cards never drag,
+    # so ordering is just a default sort like the table's.
+    - kind: cards
+      card:
+        summary_property: summary
+        label:
+          property: genre
+          colors:
+            childrens: yellow
+            fiction: blue
+            fantasy: pink
+            biography: orange
+            nonfiction: green
+            mystery: purple
+            poetry: gray
+            science_fiction: teal
+        tags:
+          - property: author_name
+            default_color: gray
+      default_sort:
+        column: published_on
+        direction: desc
+  default_filters: []
+  record_actions:
+    related_links:
+      - "*"
+    edit_modal: edit_book
+    record_page: book_page
+    show_status: true
+    modals:
+      - "*"
+  page_actions:
+    add_modal: edit_book
+    # ADR-0095's page-level launchers: anchored to no record, so they can
+    # create into ANOTHER model — `write_review` is a `reviews` new-record
+    # modal, which `add_modal` (one button, this page's model) cannot offer.
+    # The prefill and the predicate evaluate against `{ user }` alone, and
+    # the user is already loaded, so the gate is right at first paint and a
+    # `hide` here never moves a button under the pointer.
+    modal_actions:
+      - modal: write_review
+        label: Recommend a book
+        icon_id: fa/solid/star
+        prefill:
+          steps:
+            - kind: copy
+              from: "true"
+              to: .properties.recommended
+            - kind: copy
+              from: "5"
+              to: .properties.rating
+        predicates:
+          - kind: disable
+            condition: .user.id
+            message: Sign in to recommend a book.

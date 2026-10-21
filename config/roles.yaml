@@ -1,0 +1,287 @@
+# Access roles (ADR-0025). One shared file, a sequence of role objects each
+# tagged `kind: global | local`.
+#
+#   * A GLOBAL role applies to every record and is gated by a matching
+#     `<name>_role` boolean column on the users model (admin → users.admin_role),
+#     which the framework auto-provisions (ADR-0061) unless the users spec
+#     declares it — so admin_role/librarian_role/patron_role need no migration here.
+#   * A LOCAL role applies only to the records reachable from the acting user
+#     through its `joins` — the FK path from the granted model back to `users`.
+#     On `users` that path may be empty, which reaches the acting user's own row
+#     and is how "self" is spelled.
+#
+# A grant of either kind may also carry `filters`, which narrow it to the rows
+# of the granted model matching them — the same policy over fewer records. That
+# is how a tier over part of a model is written, and `circulation` below is the
+# example: it holds `read` on every thread the Catalogue Desk owns and on no
+# other workflow's, and `catalogue` on the featured books and no others.
+#
+# This file shows every shape the two kinds come in: full-access global (admin),
+# scoped read-only globals (librarian, patron), a filtered global (circulation),
+# a local role (member) whose joins reach the user in one hop (members) and two
+# hops (loans, reviews), and a local role whose chain has no hops at all (self) —
+# which is how a project says "your own `users` row" (ADR-0090).
+
+- kind: global
+  name: admin
+  description: Full read/write access to every model (matches users.admin_role).
+  grants:
+    # `*`/`*` reaches the System Specs too, `workflow_threads` and
+    # `workflow_ledger_events` among them — which is exactly the oversight shape
+    # D35 describes: "admins read everyone's conversations" is an ordinary
+    # unconditional grant, and it claims no more than it is.
+    #
+    # Note what this grant deliberately is NOT: the narrower widening below it.
+    # "Circulation staff read catalogue-desk threads" is a *filtered* grant on
+    # `circulation` — one model, one policy, and a filter naming the workflow —
+    # not a slice of this one. A model-wide grant here would leak every
+    # workflow's threads, a member's private reading desk included, which is
+    # exactly why the tier is written where it is rather than here.
+    - models:
+        - "*"
+      policies:
+        - "*"
+      allow_id_fixation: true
+
+- kind: global
+  name: librarian
+  description: >-
+    Day-to-day library staff — full control of the catalogue and circulation,
+    via each model's `admin` policy (matches users.librarian_role).
+  grants:
+    - models:
+        - books
+        - authors
+        - members
+        - loans
+        - reviews
+        - clubs
+        - events
+      policies:
+        - admin
+    # Colleagues' names, so a shared conversation can say who said what. Its own
+    # grant because it is a *different* policy on a different model — `admin` on
+    # users would also confer creating and editing accounts.
+    - models:
+        - users
+      policies:
+        - directory
+
+- kind: global
+  name: patron
+  description: >-
+    A signed-in browser of the public catalogue — read-only across books,
+    authors, clubs, events and reviews (matches users.patron_role).
+  grants:
+    - models:
+        - books
+        - authors
+        - clubs
+        - events
+        - reviews
+      policies:
+        - catalogue
+    - models:
+        - users
+      policies:
+        - directory
+
+- kind: global
+  name: circulation
+  description: >-
+    Front-desk staff, and this project's demonstration of a *filtered* grant:
+    the same policy another role holds outright, narrowed to the rows this one
+    is meant to see.
+
+    Its first job is the read-only tier on the Catalogue Desk. Who may *send* to
+    that desk is the endpoint's own `auth.roles` (librarian, admin); who may
+    *read* it back is a `read` policy on `workflow_threads`, and circulation
+    holds that policy filtered to `workflow_path`. So front-desk staff follow
+    the catalogue team's conversations about books without being able to write a
+    word into them, and every other workflow's threads — each user's private
+    reading desk above all — stay invisible, because a filtered grant reaches
+    only the rows matching it.
+
+    What the tier does NOT reach, plainly: the transcript. A ledger event
+    carries a `thread_id` and nothing else — no workflow path of its own to
+    filter on — and the only other way in is a local grant, whose join chain has
+    to terminate at `users`. Such a chain can run through the book a thread is
+    anchored on (ADR-0113), but nothing on a book leads to a front-desk
+    colleague, so for circulation there is no chain to write. So circulation
+    sees that the conversations exist, and who is in them, and not what was
+    said. Reading a conversation you never joined is the
+    cross-record predicate (D38, still deferred): "the caller holds `read` on
+    the record these columns reference".
+
+    Its second job is the same primitive on an ordinary catalogue model. The
+    front desk keeps the featured display, so it holds `catalogue` on `books`
+    filtered to the featured ones. That is a *row* filter, not a status one —
+    the policy already limits it to published books, and this narrows the
+    published set further, which is the distinction worth learning: a view
+    permission says which statuses and which fields, a grant filter says which
+    rows.
+  grants:
+    - models:
+        - users
+      policies:
+        - directory
+    # The read-only tier. One model, because a filtered grant's filters are
+    # checked against one model's properties — filter two models differently and
+    # you write two grants.
+    - models:
+        - workflow_threads
+      policies:
+        - read
+      filters:
+        - kind: single
+          property: workflow_path
+          values:
+            - books/catalogue_desk
+    # The featured display shelf. A grant filter answers to no `filterable`
+    # flag — that governs the filters a *caller* may send, and this one is
+    # authored in config, so a column marked `filterable: false` would work
+    # here just the same.
+    - models:
+        - books
+      policies:
+        - catalogue
+      filters:
+        - kind: boolean
+          property: featured
+          value: true
+
+- kind: local
+  name: member
+  description: >-
+    A patron's access to their OWN library data. Joined to the acting user
+    through members.user_id (one hop) and, for loans/reviews, through
+    member_id → members.user_id (two hops).
+  grants:
+    - model: members
+      policies:
+        - member
+      joins:
+        - kind: internal
+          foreign_key: user_id
+    - model: loans
+      policies:
+        - member
+      joins:
+        - kind: internal
+          foreign_key: member_id
+        - kind: internal
+          foreign_key: user_id
+    - model: reviews
+      policies:
+        - member
+      joins:
+        - kind: internal
+          foreign_key: member_id
+        - kind: internal
+          foreign_key: user_id
+
+- kind: local
+  name: self
+  description: >-
+    A person's own account, and this project's demonstration of a *zero-hop*
+    local grant — the framework's spelling of "self" (ADR-0090). Its one grant
+    names `users` and joins nothing, because a chain of length zero has already
+    arrived where every chain has to end: the grant reaches exactly the row
+    whose id is the acting user's, and no other row of any model.
+
+    It gates on nothing, and that is what makes it unlike every role above it. A
+    global role needs its `<name>_role` column set; a chained local role needs a
+    row on the far end of its joins. Everyone who signs in has a `users` row by
+    definition, so EVERY caller holds this role — administrators included, which
+    is why `profile` is declared below `admin` in the users spec rather than
+    above it. See the comment there; getting that order wrong is how a self role
+    silently narrows an admin's view of their own account.
+
+    What it grants is deliberately not what `directory` grants. `directory` is
+    everyone's names to everyone, read-only; `profile` is one person's own row,
+    with those same names *editable*. It names no property `directory` does not,
+    and that is a rule rather than a coincidence — the filter/sort gate asks
+    which columns a policy makes viewable on the MODEL, so a column a one-row
+    grant named would become filterable and sortable across the whole table.
+    See the comment beside `profile` in specs/users.yaml. Neither policy reaches
+    a credential, and neither confers create — a person cannot create the row
+    that makes them a person here, and a grant with no first hop pins no payload
+    to anybody in any case.
+  grants:
+    - model: users
+      policies:
+        - profile
+      joins: []
+
+- kind: local
+  name: conversation_reader
+  description: >-
+    Who may read an agent conversation back. Threads and their transcripts are
+    ordinary policy-read records, so this is an ordinary local role — the joins
+    decide which conversations a caller reaches, and a caller they don't reach
+    simply sees none.
+
+    Two ways in, and they answer different questions. `user_id` is the thread's
+    *dimension*: a workflow declaring `thread.user: true` gives every user their
+    own conversation, unaddressable by anyone else, and its owner may read it
+    before they have said a word. `participant_ids` is who has actually spoken,
+    which is what makes a *shared* conversation — the Catalogue Desk tab, where
+    several librarians talk to the same agent about the same book — readable by
+    each of them.
+
+    Events carry no readership of their own: every grant on them is the thread's
+    grant with a `thread_id` hop in front, so a transcript is readable exactly
+    when its conversation is.
+
+    Note what is NOT here, and where it lives instead. "Circulation staff read
+    the Catalogue Desk's threads without writing to them" is not a local role at
+    all — its readers are exactly the people no join reaches, so it is a
+    *filtered global* grant on `circulation` above. Oversight in the other
+    direction needs nothing new either: `admin` already grants `*` on `*`, so an
+    administrator reads every conversation, and that grant says so plainly.
+
+    What no shape here reaches is a non-participant reading the *transcript* of
+    a shared conversation. Events have no workflow path to filter on, so
+    `circulation`'s global tier stops at the thread rows; see its description.
+    A local grant can go further when the reader is reachable from the record a
+    thread is anchored on: `record_id` is a polymorphic column, and an internal
+    hop that names its target (`{kind: internal, foreign_key: record_id, model:
+    books}`, pinned by a `record_model` filter) continues from the book down
+    whatever chain the book has to `users` (ADR-0113). This library's books
+    have none — nothing on a book names a person — so the Catalogue Desk's
+    transcripts stay with their participants, and D38 is still what would
+    admit "whoever may read the book".
+  grants:
+    # `rename` rides the same two joins as `read`: whoever a conversation
+    # belongs to, or has spoken in it, may retitle it (ADR-0115). It reaches
+    # `title` and nothing else.
+    - model: workflow_threads
+      policies:
+        - read
+        - rename
+      joins:
+        - kind: internal
+          foreign_key: user_id
+    - model: workflow_threads
+      policies:
+        - read
+        - rename
+      joins:
+        - kind: internal
+          foreign_key: participant_ids
+    - model: workflow_ledger_events
+      policies:
+        - read
+      joins:
+        - kind: internal
+          foreign_key: thread_id
+        - kind: internal
+          foreign_key: user_id
+    - model: workflow_ledger_events
+      policies:
+        - read
+      joins:
+        - kind: internal
+          foreign_key: thread_id
+        - kind: internal
+          foreign_key: participant_ids

@@ -1,0 +1,39 @@
+# MODEL PROFILE ROUTING (ADR-0112), the other branch: a book that is not
+# featured is blurbed on `mini-fast`. See `featured_book_thinks_harder` for why
+# the routing, not the world, is what this case asserts.
+version: 3
+name: shelf_book_stays_fast
+description: A book that is not featured is blurbed on the mini-fast profile.
+backdrop:
+  records:
+    authors:
+      - $alias: a1
+        fields:
+          name: Ursula K. Le Guin
+    books:
+      - $alias: b1
+        fields:
+          title: The Lathe of Heaven
+          author_id: a1
+          genre: science_fiction
+          featured: false
+          # Explicit: the backdrop fills this column with 0 rather than
+          # null, and `coalesce(.blurb_budget_usd, 5)` then reads a $0 ceiling
+          # that stops the run before its first call.
+          blurb_budget_usd: 5
+          status: draft
+trigger:
+  kind: manual
+  record: b1
+  user_input: {}
+llm_turns:
+  blurb:
+    - profile: mini-fast
+      tool_calls:
+        - name: note
+          args: { angle: "a man whose dreams rewrite the world" }
+    - profile: mini-fast
+      tool_calls:
+        - name: submit
+          args: { blurb: "Every dream he has comes true. That is the problem." }
+expect: {}

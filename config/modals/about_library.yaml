@@ -1,0 +1,18 @@
+# A no-subject modal: pure static content, so `title` is required and there is no
+# `subject` block. Used as a welcome / help dialog.
+version: 3
+name: about_library
+title: About this library
+icon_id: fa/solid/circle-info
+content:
+  kind: form
+  blocks:
+    - kind: markdown
+      content: |
+        # Welcome to the Community Library
+
+        This is a showcase Keystone **Modern Project** — every page, form and
+        workflow here is declared in YAML under `config/`, with a couple of small
+        page and workflow plugins for the parts config can't express.
+
+        Browse the catalogue, join a reading club, and leave a review.

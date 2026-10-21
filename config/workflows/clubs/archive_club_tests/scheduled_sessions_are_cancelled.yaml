@@ -1,0 +1,63 @@
+# The two `where` clauses narrow the bulk transition to this club's scheduled
+# sessions: the completed one, and the other club's, are left alone.
+version: 3
+name: scheduled_sessions_are_cancelled
+description: Archiving a club cancels its scheduled sessions, and only those, then archives it.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: admin@example.com
+    clubs:
+      - $alias: c1
+        fields:
+          name: Dune Readers
+          status: active
+      - $alias: c2
+        fields:
+          name: Poetry Circle
+          status: active
+    events:
+      - $alias: e1
+        fields:
+          club_id: c1
+          title: Session One
+          starts_at: "2026-08-12T18:00:00Z"
+          status: scheduled
+      - $alias: e2
+        fields:
+          club_id: c1
+          title: Session Two
+          starts_at: "2026-08-26T18:00:00Z"
+          status: scheduled
+      - $alias: e3
+        fields:
+          club_id: c1
+          title: Session Zero
+          starts_at: "2026-07-29T18:00:00Z"
+          status: completed
+      - $alias: e4
+        fields:
+          club_id: c2
+          title: Open Mic
+          starts_at: "2026-08-14T18:00:00Z"
+          status: scheduled
+trigger:
+  kind: manual
+  record: c1
+expect:
+  strict: true
+  world:
+    transitioned:
+      events:
+        - record: e1
+          from: scheduled
+          to: cancelled
+        - record: e2
+          from: scheduled
+          to: cancelled
+      clubs:
+        - record: c1
+          from: active
+          to: archived

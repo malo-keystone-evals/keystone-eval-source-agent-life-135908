@@ -1,0 +1,104 @@
+version: 3
+run_as: system
+trigger:
+  kind: manual
+  model_name: books
+  status:
+    - published
+description: 'Post a digest of a book''s reviews: how many, and who loved it, with each review''s tone from the review_tone Function.'
+nodes:
+  - id: reviews
+    title: Find the book's published reviews
+    action:
+      kind: query_model
+      model_name: reviews
+  - id: nothing_to_digest
+    title: Refuse a book with no reviews
+    action:
+      kind: fail
+      name: no_reviews
+      message: '"nobody has reviewed ".concat(.context.book_title).concat(" yet")'
+  - id: tone
+    title: What does each rating say?
+    action:
+      kind: call_function
+      function: review_tone
+  - id: gather
+    title: Gather the reviews
+    action:
+      kind: reduce
+      reducer:
+        kind: build_array
+  - id: post
+    title: Post the digest
+    action:
+      kind: api_call
+      method: post
+      path: /hooks/review-digest
+      input_schema:
+        kind: object
+        properties:
+          reviews:
+            kind: array
+            items:
+              kind: any
+      request_mode: per_item
+      external_api: notifications
+      credential:
+        kind: system
+        name: notifications_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: object("book", .context.book_title, "count", .reviews.count(), "loved_by", .reviews.filter({$r => $r.tone.eq("praise")}).map({$r => $r.reviewer}))
+            to: ".body"
+      output_schema:
+        kind: object
+        properties: {}
+      output_transform:
+        steps: []
+      response_format:
+        kind: json
+      output_mode: single
+      sends_sensitive_data: false
+connections:
+  - from_id: entry
+    to_id: reviews
+    transform:
+      steps:
+        - kind: where
+          property: book_id
+          equals: ".id"
+        - kind: where
+          property: status
+          equals: '"published"'
+        - kind: copy
+          from: ".title"
+          to: ".context.book_title"
+  - from_id: reviews
+    to_id: nothing_to_digest
+    kind: empty
+  - from_id: reviews
+    to_id: tone
+    transform:
+      steps:
+        - kind: copy
+          from: ".review.rating"
+          to: ".rating"
+        - kind: copy
+          from: ".includes.member.display_name"
+          to: ".context.reviewer"
+  - from_id: tone
+    to_id: gather
+    transform:
+      steps:
+        - kind: copy
+          from: object("tone", .tone, "reviewer", .context.reviewer)
+          to: ".review"
+  - from_id: gather
+    to_id: post
+    transform:
+      steps:
+        - kind: copy
+          from: ".result.map({$x => $x.review})"
+          to: ".reviews"

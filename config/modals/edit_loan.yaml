@@ -1,0 +1,37 @@
+# A create-only (`new_record`) modal. The two id_search_fields carry hidden
+# `filters` so the pickers only offer published books and active members.
+version: 3
+name: edit_loan
+icon_id: fa/solid/book-bookmark
+description: Check out a book to a member.
+content:
+  kind: form
+  blocks:
+    - kind: id_search_field
+      label: Book
+      path_key: properties.book_id
+      model_name: books
+      filters:
+        - propertyName: status
+          operator: eq
+          valueAExpr: published
+          valueBExpr: null
+          not: false
+    - kind: id_search_field
+      label: Member
+      path_key: properties.member_id
+      model_name: members
+      filters:
+        - propertyName: status
+          operator: eq
+          valueAExpr: active
+          valueBExpr: null
+          not: false
+    - kind: text_field
+      label: Due date
+      path_key: properties.due_on
+      format: date
+subject:
+  kind: new_record
+  model_name: loans
+  initial_status: requested

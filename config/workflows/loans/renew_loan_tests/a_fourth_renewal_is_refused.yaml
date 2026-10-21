@@ -1,0 +1,46 @@
+# No rule here refuses it: the spec's `renewals_within_limit` invariant fails
+# the update as `validation_failed`, which the same Error Handler takes.
+version: 3
+name: a_fourth_renewal_is_refused
+description: A loan renewed three times already is refused by the spec's invariant, and the handler tells the member.
+now: 2026-06-01T00:00:00Z
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+          first_name: Alice
+          last_name: Reader
+    members:
+      - $alias: m1
+        fields:
+          user_id: u1
+          display_name: Alice R.
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    loans:
+      - $alias: l1
+        fields:
+          book_id: b1
+          member_id: m1
+          due_on: "2026-06-10"
+          renewals: 3
+          status: active
+trigger:
+  kind: manual
+  record: l1
+expect:
+  calls:
+    tell_refused:
+      - body:
+          book: Dune
+          reason: validation_failed

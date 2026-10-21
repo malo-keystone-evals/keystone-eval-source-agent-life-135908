@@ -1,0 +1,55 @@
+# A multi-step `wizard` modal over a new members record. Each step is a screen
+# with its own blocks, a `summary` (shown in the wizard's running recap) and a
+# `completion` rule gating the Next button. The last screen reuses the shared
+# member_contact fragment.
+version: 3
+name: onboard_member
+title: Onboard a member
+icon_id: fa/solid/user-plus
+content:
+  kind: wizard
+  steps:
+    - name: account
+      label: Account
+      screens:
+        - blocks:
+            - kind: id_search_field
+              label: User account
+              path_key: properties.user_id
+              model_name: users
+            - kind: text_field
+              label: Display name
+              path_key: properties.display_name
+          summary:
+            - label: Display name
+              expr: .properties.display_name
+          completion:
+            kind: valid
+    - name: tier
+      label: Tier
+      screens:
+        - blocks:
+            - kind: select_field
+              label: Membership tier
+              path_key: properties.membership_tier
+              itemset_name: membership_tiers
+          summary:
+            - label: Tier
+              expr: .properties.membership_tier
+          completion:
+            kind: valid
+    - name: contact
+      label: Contact
+      screens:
+        - blocks:
+            - kind: fragment
+              fragment_name: member_contact
+          summary:
+            - label: Phone
+              expr: .properties.phone
+          completion:
+            kind: always
+subject:
+  kind: new_record
+  model_name: members
+  initial_status: active

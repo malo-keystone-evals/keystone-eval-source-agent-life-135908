@@ -1,0 +1,133 @@
+version: 3
+run_as: system
+# Fires when a book is published. The last node writes back onto the same
+# book (`save`), and that update does not re-fire this trigger: `on_enter`
+# matches only an actual change of status into `published`.
+trigger:
+  kind: on_enter
+  model_name: books
+  statuses:
+    - published
+description: >-
+  When a book is published, fetch Open Library metadata and let a model distil
+  a summary and genre onto it. The book's id rides in the Item Context, so the
+  model never has to echo it; if Open Library is down, the curator works from
+  the title alone.
+nodes:
+  - id: lookup
+    title: Search Open Library for the title
+    action:
+      kind: api_call
+      method: get
+      path: /search.json
+      input_schema:
+        kind: object
+        properties:
+          title:
+            kind: string
+      request_mode: per_item
+      external_api: open_library
+      input_transform:
+        steps:
+          - kind: copy
+            from: ".title"
+            to: ".query_params.title"
+          - kind: copy
+            from: '"5"'
+            to: ".query_params.limit"
+          - kind: copy
+            from: '"title,author_name,first_publish_year,subject"'
+            to: ".query_params.fields"
+      output_schema:
+        kind: object
+        properties:
+          matches:
+            kind: array
+            items:
+              kind: any
+      output_transform:
+        steps:
+          - kind: copy
+            from: ".docs"
+            to: ".matches"
+      response_format:
+        kind: json
+      output_mode: single
+      sends_sensitive_data: false
+  - id: curate
+    title: Distil the metadata into summary + genre
+    action:
+      kind: agentic_loop
+      model:
+        profile:
+          kind: static
+          name: mini-thinking
+        credential:
+          kind: system
+          name: open_ai_api
+      system_prompt: |
+        You are the catalogue curator for a lending library. You receive a book
+        title and raw Open Library search results. Distil them into a
+        one-paragraph reader-facing summary and a single lower-case genre word
+        (e.g. fiction, science_fiction, fantasy, history, biography). If the
+        search results are empty or unrelated, still write a plausible summary
+        from the title alone and use the genre `fiction`.
+      structured_output:
+        kind: object
+        properties:
+          summary:
+            kind: string
+            required: true
+          genre:
+            kind: string
+            required: true
+      force_tool_call: false
+      termination:
+        max_iterations: 3
+  - id: save
+    title: Write the curated fields onto the book
+    action:
+      kind: update_model
+      model_name: books
+connections:
+  - from_id: entry
+    to_id: lookup
+    transform:
+      steps:
+        - kind: copy
+          from: ".title"
+          to: ".title"
+        - kind: copy
+          from: ".id"
+          to: ".context.book_id"
+        - kind: copy
+          from: ".title"
+          to: ".context.title"
+  - from_id: lookup
+    to_id: curate
+    transform:
+      steps:
+        - kind: copy
+          from: '"Curate the catalogue entry for \"".concat(.context.title).concat("\". Open Library search results: ").concat(.matches.map({$d => $d.get("title", null)}).to_string())'
+          to: ".message"
+  # Open Library down or refusing: the curator still has the title, which the
+  # Item Context carried onto the Error Item.
+  - from_id: lookup
+    to_id: curate
+    kind: error
+    label: Open Library unavailable
+    transform:
+      steps:
+        - kind: copy
+          from: '"Curate the catalogue entry for \"".concat(.context.title).concat("\". Open Library could not be searched, so work from the title alone.")'
+          to: ".message"
+  - from_id: curate
+    to_id: save
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.book_id"
+          to: ".id"
+        - kind: copy
+          from: object("summary", .output.value.summary, "genre", .output.value.genre)
+          to: ".properties"

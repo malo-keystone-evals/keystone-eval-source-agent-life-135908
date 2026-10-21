@@ -1,0 +1,21 @@
+# Endpoint Test Case (ADR-0140): the sender names the event only in a header.
+#
+# A Test Case runs past the HTTP layer, so the Inbound Auth signature check is
+# not exercised here — the server's own tests cover it. What this pins is the
+# entry Item: `X-Catalogue-Event` is listed under the trigger's `headers:`, so
+# it arrives as `.headers.x_catalogue_event`, and the workflow echoes it back.
+version: 3
+name: event_header_reaches_the_response
+description: The X-Catalogue-Event header is copied onto the entry Item and echoed as the event.
+trigger:
+  kind: endpoint
+  input:
+    title: Dune
+  headers:
+    X-Catalogue-Event: book.published
+expect:
+  response:
+    code: 200
+    body:
+      event: book.published
+      title: Dune

@@ -1,0 +1,2 @@
+ALTER TABLE workflow_metered_turns DROP CONSTRAINT IF EXISTS workflow_metered_turns__fk_2a6jnmoaiyq;
+DROP INDEX IF EXISTS workflow_metered_turns__idx_ztzhuv22ha;

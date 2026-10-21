@@ -1,0 +1,35 @@
+# The Error Handler: ISBNdb answers with something that is not a book, the
+# lookup fails `response_invalid` — an error no edge of its own takes — and the
+# workflow's one `on_error` handler answers 502 with the name and message.
+version: 3
+name: an_unreadable_reply_answers_through_the_handler
+description: An ISBNdb reply with no book in it fails the lookup, and the Error Handler answers 502.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: admin@example.com
+    authors:
+      - $alias: a1
+        fields:
+          name: Ursula K. Le Guin
+    books:
+      - $alias: b1
+        fields:
+          title: The Dispossessed
+          author_id: a1
+          status: published
+          isbn: 978-0061054884
+external:
+  lookup:
+    unexpected: true
+trigger:
+  kind: endpoint
+  record: b1
+  input: {}
+expect:
+  response:
+    code: 502
+    body:
+      name: response_invalid

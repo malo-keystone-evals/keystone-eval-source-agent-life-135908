@@ -1,0 +1,51 @@
+# A member record page. The `modals` action-set surfaces the suspend_member
+# WORKFLOW modal (a manual-trigger workflow) alongside the edit form.
+version: 4
+name: member_page
+route:
+  section: community
+  path: /members/:id/:tab?
+  roles:
+    - admin
+    - librarian
+  order: 2
+  hidden: true
+content:
+  kind: record
+  model_name: members
+  # The members listing this page sits under, so a member opened from it comes
+  # back to the same filtered, sorted listing rather than to its defaults.
+  parent_page: members_listing
+  tabs:
+    - kind: blocks
+      label: Profile
+      title: Profile
+      value: profile
+      blocks:
+        - kind: properties
+          omit: null
+          # Everything but two facts about the membership itself, which stay
+          # read-only: the user account it is paired to, and the day it began.
+          editable:
+            - "*"
+            - "!user_id"
+            - "!joined_on"
+    - kind: table
+      label: Loans
+      value: loans
+      model_name: loans
+      # The listing these rows stand in for, whose record actions they take.
+      listing_page: loans_listing
+      # `in` rather than `eq`: over a string `eq` resolves to a date comparison,
+      # which queries the same rows but reads as a date filter on the listing a
+      # link out of this tab carries it to.
+      filters:
+        - propertyName: member_id
+          operator: in
+          valueAExpr: .id
+          valueBExpr: null
+          not: false
+    - kind: lifecycle
+      label: History
+      title: History
+      value: history

@@ -1,0 +1,9 @@
+# A Scenario (ADR-0054): a Backdrop bound to an actor (and an optional fixed
+# clock). It captures "what data exists and who is acting" — nothing more. The
+# dashboard's `previews` and page-plugin `previews:` mappings point at it so the
+# studio can render them against real seeded data.
+description: The seeded library, viewed as the admin user.
+backdrop: library
+actor:
+  as: admin_user
+now: 2026-07-23T00:00:00Z

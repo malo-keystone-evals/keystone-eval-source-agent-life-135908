@@ -1,0 +1,49 @@
+# The query finds the club's book (a `where` step built its filter), so the
+# worksheet renders with the book panel and is attached to the event.
+version: 3
+name: a_club_with_a_book_gets_its_worksheet
+description: A club with a current book gets a worksheet rendered and attached to the event.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: admin@example.com
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    clubs:
+      - $alias: c1
+        fields:
+          name: Dune Readers
+          current_book_id: b1
+          status: active
+    events:
+      - $alias: e1
+        fields:
+          club_id: c1
+          title: Session One
+          starts_at: "2026-08-12T18:00:00Z"
+          capacity: 12
+          venue:
+            line1: 1 Library Lane
+            city: Lewes
+          status: scheduled
+trigger:
+  kind: on_create
+  record: e1
+expect:
+  world:
+    updated:
+      events:
+        - record: e1
+          changes:
+            worksheet_file_id:
+              $file: {}

@@ -1,0 +1,58 @@
+# Two reviews: each is toned by the Function, the reviewers' names come from
+# the query's identity includes, and the lambdas keep only the praise.
+version: 3
+name: the_digest_names_who_loved_it
+description: A digest counts the reviews and names the readers whose rating was praise.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+      - $alias: u2
+        fields:
+          email: bob@example.com
+    members:
+      - $alias: m1
+        fields:
+          user_id: u1
+          display_name: Alice R.
+      - $alias: m2
+        fields:
+          user_id: u2
+          display_name: Bob K.
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    reviews:
+      - $alias: r1
+        fields:
+          book_id: b1
+          member_id: m1
+          rating: 5
+          headline: Wonderful
+          status: published
+      - $alias: r2
+        fields:
+          book_id: b1
+          member_id: m2
+          rating: 2
+          headline: Too long
+          status: published
+trigger:
+  kind: manual
+  record: b1
+expect:
+  calls:
+    post:
+      - body:
+          book: Dune
+          count: 2
+          loved_by: [Alice R.]

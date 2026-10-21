@@ -1,0 +1,155 @@
+# The minting half of user invitations (issue #374), as a project writes it: an
+# `invite_user` node makes the account and the link, and an ordinary `send_email`
+# node delivers the framework's shipped `invite` template. Nothing here is
+# framework furniture — a project wanting its own invitation email replaces the
+# template, or the whole second node, without touching the first.
+#
+# **The trigger is anchored on a users record, and the record is not the
+# invitee.** A workflow-subject modal dispatches exactly one shape — a `manual`
+# trigger against the record the modal was opened on (`runWorkflow` carries a
+# `record_id`, and the dispatch funnel gates on that record's status and the
+# caller's policies on it) — and an invitation has no record yet, because making
+# one is the whole job. So the anchor here is whichever user was selected in the
+# listing the action is carried on: it is the permission gate and it contributes
+# nothing to the invitation. Everything the new account is made of arrives in
+# `user_input` from the modal's form.
+#
+# `run_as: user` rather than `system`, so the invite is written with the
+# administrator's own authority: the `users` spec's `admin` policy grants
+# `create` in the `invited` status, and an operator who does not hold it gets the
+# same refusal any other write would give them. Inviting is an act somebody
+# performs, not something the platform does on its own.
+version: 3
+run_as: user
+
+trigger:
+  kind: manual
+  model_name: users
+  # The anchor has to be a live account. An admin picking a row in the users
+  # listing is picking an `active` one; an `invited` row is somebody else's
+  # pending invitation and is not a place to start another from.
+  status:
+    - active
+  # What the modal's form hands over. Two things it is *not*: it is not checked
+  # against the modal (a workflow modal's form is typed `any` client-side, so the
+  # two are kept in step by hand), and it is not a guarantee the run receives
+  # these fields — a form submits only what somebody touched. What it does buy is
+  # the `required` on the object itself, which is what makes an untouched form a
+  # refused dispatch rather than a run with nothing in it. See the entry
+  # transform for how the fields are read.
+  user_input_schema:
+    kind: object
+    required: true
+    properties:
+      email:
+        kind: string
+        format: email
+        required: true
+        description: Where the invitation goes, and the account's sign-in identifier.
+      first_name:
+        kind: string
+        required: true
+        description: The invitee's given name.
+      last_name:
+        kind: string
+        required: true
+        description: The invitee's family name.
+      librarian_role:
+        kind: boolean
+        description: Grant day-to-day library staff access.
+      patron_role:
+        kind: boolean
+        description: Grant read-only access to the public catalogue.
+      onboarding:
+        kind: string
+        description: >-
+          The Onboarding Process the invitee works through on their first
+          sign-in, by name, or blank for none.
+
+description: >-
+  Invite somebody to Athenaeum: create their account in `invited` and email them
+  the link that sets their password.
+
+nodes:
+  - id: invite
+    title: Create the invited account and mint its link
+    action:
+      kind: invite_user
+  - id: notify
+    title: Email the invitation
+    action:
+      kind: send_email
+      template: invite
+
+connections:
+  # The account, built from the form. There is no `status` step and no place to
+  # write one: the node forces `invited`, which is what keeps the account out
+  # until somebody proves they own the address.
+  #
+  # **Every field is read with `get`, not with `.user_input.email`.** A workflow
+  # modal's form starts empty and submits only the fields somebody touched — it
+  # has no schema to default them from, since a workflow publishes none to the
+  # client yet — so a plain access on an untouched field is "missing property"
+  # and the whole Item is *dropped* with a warning nobody reads. `get` yields
+  # null there instead, so the Item reaches the node and a form with a blank
+  # email is refused by the `users` spec's own `not null` as a routable
+  # `validation_failed`. A form nobody touched at all never gets this far: the
+  # trigger's `user_input_schema` is `required`, so the dispatch refuses it and
+  # the modal says so.
+  #
+  # The trade is that `get`'s key is a string the type-check can't read, so a
+  # renamed *source* field is not caught. What is still caught is every
+  # destination: one step per property, so each `.properties.<name>` is held
+  # against the `users` Spec and a typo is a build finding.
+  #
+  # The two role flags are `<name>_role` boolean columns the framework
+  # auto-provisions from `roles.yaml` (ADR-0061), so they are ordinary
+  # properties — and `get`'s default is what makes an unticked box a `false`
+  # rather than a null, which those `not null` columns would refuse.
+  # `admin_role` is deliberately not on the form: an administrator is made by
+  # editing the account afterwards, not by ticking a box on the way in.
+  - from_id: entry
+    to_id: invite
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: .user_input.get("email")
+          to: ".properties.email"
+        - kind: copy
+          from: .user_input.get("first_name")
+          to: ".properties.first_name"
+        - kind: copy
+          from: .user_input.get("last_name")
+          to: ".properties.last_name"
+        - kind: copy
+          from: .user_input.get("librarian_role", false)
+          to: ".properties.librarian_role"
+        - kind: copy
+          from: .user_input.get("patron_role", false)
+          to: ".properties.patron_role"
+        # The Onboarding Process, which needs nothing built for it: it is an
+        # ordinary editable column on `users`, so naming it here is the whole of
+        # assigning an invitee to one (ADR-0110 D5). A blank box is a null and
+        # therefore nothing to do — the column carries no default of its own, and
+        # the self-service doors are where per-door defaults live.
+        - kind: copy
+          from: .user_input.get("onboarding")
+          to: ".properties.onboarding"
+  # The send. Both values come off the node's own output rather than back out of
+  # `user_input`: `email` is what the row actually holds, and `accept_url` is the
+  # link the node minted, which exists nowhere else. It is [[Sensitive]] at both
+  # ends — armed `password` on the invite node's output and again on the send
+  # node's `params` — so it is ciphertext in the step rows and a mask in the
+  # trace, and the only place it appears in the clear is the email.
+  - from_id: invite
+    to_id: notify
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: ".email"
+          to: ".to"
+        - kind: copy
+          from: object("accept_url", .accept_url)
+          to: ".params"

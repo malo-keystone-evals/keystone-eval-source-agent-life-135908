@@ -1,0 +1,55 @@
+# Two books chosen: the foreach makes two Items, two loans are requested, and
+# the reduce brings them back to one notification listing both.
+version: 3
+name: each_book_gets_a_request
+description: Requesting two books creates two requested loans and posts one notification listing both.
+now: 2026-06-01T00:00:00Z
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+    members:
+      - $alias: m1
+        fields:
+          user_id: u1
+          display_name: Alice R.
+          status: active
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+      - $alias: b2
+        fields:
+          title: Dune Messiah
+          author_id: a1
+          status: published
+trigger:
+  kind: manual
+  record: m1
+  user_input:
+    book_ids: [b1, b2]
+expect:
+  world:
+    created:
+      loans:
+        - fields:
+            book_id: b1
+            member_id: m1
+            due_on: "2026-06-22"
+        - fields:
+            book_id: b2
+            member_id: m1
+            due_on: "2026-06-22"
+  calls:
+    notify:
+      - body:
+          member: m1
+          count: 2

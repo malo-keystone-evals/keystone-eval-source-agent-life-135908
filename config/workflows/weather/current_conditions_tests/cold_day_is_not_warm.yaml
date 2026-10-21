@@ -1,0 +1,24 @@
+# The other branch of the dummy computation: a below-20°C reading yields
+# is_warm: false, and the sub-zero Fahrenheit conversion is exercised too
+# (4°C → 39.2°F).
+version: 3
+name: cold_day_is_not_warm
+description: A cold reading yields is_warm false and a fractional Fahrenheit value.
+trigger:
+  kind: endpoint
+  input:
+    latitude: 51.51
+    longitude: -0.13
+external:
+  fetch_weather:
+    current:
+      temperature_2m: 4
+      wind_speed_10m: 18
+expect:
+  response:
+    code: 200
+    body:
+      temperature_c: 4
+      wind_kph: 18
+      temperature_f: 39.2
+      is_warm: false

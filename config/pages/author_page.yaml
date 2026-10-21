@@ -1,0 +1,49 @@
+# An author record page: a properties tab, a related-records table tab of the
+# author's books (filtered by author_id), and lifecycle history.
+version: 4
+name: author_page
+route:
+  section: library
+  path: /authors/:id/:tab?
+  roles:
+    - admin
+    - librarian
+    - patron
+  order: 3
+  hidden: true
+content:
+  kind: record
+  model_name: authors
+  # The listing this record page sits under: its back arrow returns there, and
+  # the authors listing's filters, sort and view ride the URL in between.
+  parent_page: authors_listing
+  tabs:
+    - kind: blocks
+      label: Profile
+      title: Profile
+      value: profile
+      blocks:
+        - kind: properties
+          omit: null
+          # Every property this viewer may already edit, edited in place.
+          editable:
+            - "*"
+    - kind: table
+      label: Books
+      value: books
+      model_name: books
+      # The listing these rows stand in for, whose record actions they take.
+      listing_page: books_listing
+      # `in` rather than `eq`: over a string `eq` resolves to a date comparison,
+      # which queries the same rows but reads as a date filter on the listing a
+      # link out of this tab carries it to.
+      filters:
+        - propertyName: author_id
+          operator: in
+          valueAExpr: .id
+          valueBExpr: null
+          not: false
+    - kind: lifecycle
+      label: History
+      title: History
+      value: history

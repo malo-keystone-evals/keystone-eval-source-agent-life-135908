@@ -1,0 +1,13 @@
+ALTER TABLE custom_dashboards DROP CONSTRAINT IF EXISTS custom_dashboards__fk_f4dh8jcckz;
+ALTER TABLE custom_dashboards DROP CONSTRAINT IF EXISTS custom_dashboards__fk_1bq8hp7lup6;
+ALTER TABLE custom_dashboards DROP CONSTRAINT IF EXISTS custom_dashboards__fk_8ky5r5jn9g;
+DROP INDEX IF EXISTS custom_dashboards__idx_b_jeophq1lin;
+DROP INDEX IF EXISTS custom_dashboards__idx_nrcbxny9wa;
+DROP INDEX IF EXISTS custom_dashboards__idx_s1gk7xkfhp;
+DROP INDEX IF EXISTS custom_dashboards__idx_1vxk7frens6;
+DROP INDEX IF EXISTS custom_dashboards__idx_26eaj9s01w6;
+DROP INDEX IF EXISTS custom_dashboards__idx_8ky5r5jn9g;
+DROP TRIGGER IF EXISTS custom_dashboards__tg_a_bns6sg14do ON public.custom_dashboards;
+DROP FUNCTION IF EXISTS public.custom_dashboards__tg_a_bns6sg14do();
+DROP TABLE custom_dashboards;
+DROP TYPE IF EXISTS custom_dashboards_status;

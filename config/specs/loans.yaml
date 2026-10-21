@@ -1,0 +1,407 @@
+# A book on loan to a member. `loans` drives most of the workflow showcase: it
+# is `workflow_tracked`, so entering `active` fires the due-date scheduler, a
+# nightly `recurring` workflow sweeps it to `overdue`, and returning it stamps a
+# `lifecycle_property` (return_condition) recorded ONLY on the transition. Its
+# `board_rank` LexoRank column powers the circulation Board, and `book_title` is
+# a second `cached` column so the board cards need no join. `checked_out_at` and
+# `member_tier_at_checkout` are the showcase's [[Snapshot]]s — a calculated and
+# a cached column under the same `snapshot:` block — so the clock and the
+# member's tier are both read once as the loan enters `active` and never again.
+version: 4
+initial_status: requested
+workflow_tracked: true
+name: loans
+singular_name: loan
+display_name: Loan
+description: >-
+  A single borrowing of a book by a member. Moves requested → active →
+  (overdue) → returned, and is the trigger record for the reminder, overdue and
+  due-date-scheduling workflows.
+icon_id: fa/solid/book-bookmark
+nav_section: circulation
+identity:
+  title: book_title
+  subtitles:
+    - due_on
+statuses:
+  - name: requested
+    description: The member has asked to borrow; not yet handed over.
+  - name: active
+    description: Checked out and in the member's hands.
+  - name: overdue
+    description: Past its due date and not yet returned.
+  - name: returned
+    description: Back on the shelf.
+policies:
+  - name: admin
+    description: Full control over loans.
+    permissions:
+      - kind: view
+        properties:
+          - "*"
+        status:
+          - "*"
+        includes:
+          - "*"
+        lifecycle: true
+        # The whole audit payload, not just the properties this permission
+        # lists — the flag is the entire gate. Only `admin` gets it; the
+        # `member` policy below keeps its view permission and no audit read,
+        # so a patron sees no audit button on their own loan.
+        audits: true
+      - kind: create
+        properties:
+          - book_id
+          - member_id
+          - borrowed_on
+          - due_on
+        status:
+          - requested
+        required_properties:
+          - book_id
+          - member_id
+          - due_on
+      - kind: update
+        properties:
+          - due_on
+          - renewals
+          - board_rank
+        status:
+          - requested
+          - active
+          - overdue
+      - kind: transition
+        from:
+          - requested
+        to:
+          - active
+      # Going overdue records nothing: the book is still out, so there is no
+      # condition to note. Listed on its own rather than beside `returned`
+      # because `required_properties` applies to every `to:` in a permission —
+      # sharing one made a librarian name a return condition for a book nobody
+      # had returned, and refused the transition outright when they didn't.
+      - kind: transition
+        from:
+          - active
+        to:
+          - overdue
+      - kind: transition
+        from:
+          - active
+        to:
+          - returned
+        # return_condition is a lifecycle property — it exists only on the
+        # transition, is written to the loans_lifecycles row, and is mandatory
+        # when returning.
+        properties:
+          - return_condition
+          - reshelve_by
+        required_properties:
+          - return_condition
+      - kind: transition
+        from:
+          - overdue
+        to:
+          - returned
+        properties:
+          - return_condition
+          - reshelve_by
+        required_properties:
+          - return_condition
+      # Renewing is a workflow (loans/renew_loan): it refuses an overdue loan
+      # and tells the member either way.
+      # The desk hands a requested loan over (loans/hand_over_loan).
+      - kind: workflow
+        workflows:
+          - hand_over_loan
+        status:
+          - requested
+      - kind: workflow
+        workflows:
+          - renew_loan
+        status:
+          - active
+          - overdue
+  - name: member
+    description: View and renew your own loans.
+    permissions:
+      - kind: view
+        properties:
+          - book_id
+          - book_title
+          - borrowed_on
+          - due_on
+          - renewals
+        status:
+          - "*"
+        includes:
+          - book
+      # A member may push out their own due date. Reachability is the local
+      # `member` role's join (loans.member_id → members.user_id), so this
+      # permission never has to name a member — it only says *which fields*.
+      #
+      # It is what lets the Reading Desk renew a loan: that workflow is
+      # `run_as: user`, so its agent writes with the caller's own permissions and
+      # can only ever renew a loan the caller could have renewed by hand. Without
+      # this the write is refused outright — a visible record with no matching
+      # UpdatePermission is a hard error.
+      #
+      # This is also the layer that makes the desk's [[Permission Mask]] safe to
+      # read as narrow. That mask lists whole models (`update: [loans]`); the
+      # narrowing to *these two fields, in these two statuses, on this member's
+      # own rows* happens here, and nothing in the workflow config can widen it.
+      - kind: update
+        properties:
+          - due_on
+          - renewals
+        status:
+          - active
+          - overdue
+      - kind: workflow
+        workflows:
+          - renew_loan
+        status:
+          - active
+          - overdue
+properties:
+  - name: book_id
+    description: The book being borrowed.
+    schema:
+      kind: string
+      format: uuid
+      required: true
+    foreign_key_to: books
+    storage:
+      kind: standard
+      storage_type: uuid
+      not_null: true
+      index: standard
+      on_delete: restrict
+  - name: book_title
+    description: The book's title, cached from books so board cards render without a join.
+    schema:
+      kind: string
+    editable: false
+    filterable: false
+    storage:
+      kind: cached
+      index: standard
+      source:
+        foreign_key: book_id
+        property: title
+  - name: member_id
+    description: The member borrowing the book.
+    schema:
+      kind: string
+      format: uuid
+      required: true
+    foreign_key_to: members
+    storage:
+      kind: standard
+      storage_type: uuid
+      not_null: true
+      index: standard
+      on_delete: restrict
+  - name: borrowed_on
+    description: The date the loan was checked out.
+    schema:
+      kind: string
+      format: date
+      default:
+        kind: date_preset
+        preset: today
+    storage:
+      kind: standard
+      storage_type: date
+  - name: due_on
+    description: The date the book is due back.
+    schema:
+      kind: string
+      format: date
+      required: true
+      # The library's standard loan is a fortnight, so the Add Loan modal opens
+      # with the due date already filled in.
+      default:
+        kind: date_preset
+        preset: today
+        offset:
+          days: 14
+    storage:
+      kind: standard
+      storage_type: date
+      not_null: true
+      index: standard
+  - name: checked_out_at
+    description: >-
+      The moment the book actually left the shelf, captured as the loan enters
+      `active`. `borrowed_on` beside it is the date the librarian typed in;
+      this one is written by the framework at the transition, on whatever path
+      the transition came in on — the record surface, a workflow, a seed or a
+      hand-written UPDATE.
+    schema:
+      kind: string
+      format: dateTime
+    # A [[Snapshot]] is read-only and always nullable: nothing writes it but
+    # the capture, and a loan that never entered `active` never captured.
+    editable: false
+    storage:
+      kind: calculated
+      storage_type: timestamp with time zone
+      # `now()` is a refusal at the maintained `formula` site — a formula is
+      # re-derived on every write and has to answer the same thing each time —
+      # and the `snapshot:` block is what moves it to the write-once site
+      # (ADR-0093). "The time this was approved" is the canonical use, and a
+      # checkout time is the same shape.
+      formula: now()
+      snapshot:
+        # Entering `active` is the checkout. Going `overdue` and being
+        # `returned` leave the value where it is — it is history — and the
+        # loan cannot re-enter `active`, so nothing overwrites it either.
+        status:
+          - active
+  - name: member_tier_at_checkout
+    description: >-
+      The membership tier the borrower held when the book left the shelf, which
+      is what the loan's terms were set by. `members.membership_tier` beside it
+      is what they hold *now*: promote a bronze member to gold and every loan
+      they take out afterwards is a gold loan, while the ones already out keep
+      the tier they were lent under.
+    schema:
+      kind: string
+    # Read-only and nullable for the same reason `checked_out_at` is: the
+    # capture is the only thing that writes it, and a loan still `requested`
+    # has never been checked out.
+    editable: false
+    filterable: false
+    storage:
+      # The second half of the showcase's [[Snapshot]] pair, and the clock-free
+      # half: a `cached` column under the same block, so the copy is taken with
+      # the FK-follow `SELECT` the maintained `book_title` above runs — once,
+      # at the same moment `checked_out_at` reads the clock. Being a copy of a
+      # value rather than a reading of the clock is what lets a [[World]] diff
+      # it against production's by value (ADR-0093).
+      kind: cached
+      source:
+        foreign_key: member_id
+        property: membership_tier
+      snapshot:
+        # No trigger on `members` follows this one down, so a member who moves
+        # tier changes nothing about a loan already out.
+        status:
+          - active
+  - name: renewals
+    description: How many times the loan has been renewed.
+    schema:
+      kind: number
+      integer: true
+      min: 0
+      default:
+        kind: number
+        value: 0
+    storage:
+      kind: standard
+      storage_type: integer
+      not_null: true
+      default_expr: "0"
+  - name: board_rank
+    description: Drag-to-reorder position within a Board column (global LexoRank).
+    schema:
+      kind: string
+      format: lexoRank
+    filterable: false
+    hidden: true
+    storage:
+      kind: standard
+      storage_type: character varying
+      index: standard
+lifecycle_properties:
+  - name: return_condition
+    description: The condition the book came back in, recorded at return time.
+    schema:
+      kind: string
+      enum:
+        - good
+        - damaged
+        - lost
+    viewable: true
+    editable: false
+    sortable: false
+    filterable: false
+    storage:
+      kind: standard
+      storage_type: character varying
+  - name: reshelve_by
+    description: The date the returned book should be back on the shelf by.
+    schema:
+      kind: string
+      format: date
+      # Returned stock is checked and reshelved within three days, so the
+      # transition modal opens with the date already filled in.
+      default:
+        kind: date_preset
+        preset: today
+        offset:
+          days: 3
+    viewable: true
+    editable: false
+    sortable: false
+    filterable: false
+    storage:
+      kind: standard
+      storage_type: date
+# Circulation history is the showcase's compliance record: every loan event —
+# who checked a book out, who pushed the due date, who returned it and in what
+# condition — lands in `loans_audits` and is kept for a year.
+#
+# `status: ["*"]` because the transitions *are* the history: a loan's life is
+# requested → active → (overdue) → returned, and an audit that skipped a status
+# would lose the move into or out of it. `board_rank` is the one property left
+# out: it is a LexoRank the circulation Board rewrites on every drag, so
+# auditing it would bury the events a librarian actually needs behind
+# reordering noise. Nothing else is denied, so nothing else is silently missing.
+audits:
+  status:
+    - "*"
+  properties:
+    - "*"
+    - "!board_rank"
+  expiry_days: 365
+# The library's renewal cap, as an [[Invariant]] rather than as a rule the API
+# happens to apply: the database refuses the save, so the desk agent, a seed
+# and a hand-written UPDATE all meet it exactly as the Renew button does.
+#
+# It reads `renewals` and nothing else — a standard column, `not_null` with a
+# `0` default, so the predicate can never answer null and the save is refused
+# only for the reason written here. Scoped to the statuses a loan is out in:
+# a `requested` loan has nothing to renew, and a `returned` one is history,
+# which is what "gates transitions in, never out" buys — a loan sitting at the
+# cap can still be returned (ADR-0093).
+invariants:
+  - name: renewals_within_limit
+    description: >-
+      Three renewals is the circulation policy's limit; past it the member has
+      to bring the book back and borrow it again, so somebody else gets a turn.
+    message: This loan has been renewed three times already and cannot be renewed again.
+    status:
+      - active
+      - overdue
+    expr: .renewals.lte(3)
+  # The second one is the showcase's typed [[Snapshot]] read: it depends on
+  # `checked_out_at`, which is captured as the loan enters `active` and is
+  # null before that. The rule is scoped to `active` and nothing else, so its
+  # statuses are *covered* by the snapshot's own list — the capture has always
+  # happened by the time the check trigger runs — and the dependency types
+  # non-null. Widen this list to `[active, overdue]` and the same expression
+  # stops compiling: `diff` propagates a null operand, a null is not truthy,
+  # and the site demands a statically non-null result. The author's way out is
+  # a `coalesce`, which puts the intent on the record (ADR-0093).
+  - name: loan_term_within_limit
+    description: >-
+      Circulation's outer bound on a single borrowing: sixty days from the
+      moment the book left the shelf, renewals included. Past that the book
+      comes back and is borrowed again, so the catalogue tells the truth about
+      where it is.
+    message: A loan can run for at most 60 days from checkout; bring the due date back in.
+    status:
+      - active
+    expr: .due_on.diff("days", .checked_out_at).lte(60)

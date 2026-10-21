@@ -1,0 +1,157 @@
+version: 3
+run_as: system
+trigger:
+  kind: manual
+  model_name: loans
+  status:
+    - active
+    - overdue
+description: Renew a loan for fourteen more days, refusing an overdue loan or a fifth renewal, and tell the member either way.
+nodes:
+  - id: check
+    title: Is the loan overdue?
+    action:
+      kind: switch
+      cases:
+        - name: overdue
+          when: '.status.eq("overdue")'
+  - id: refuse_overdue
+    title: Refuse to renew an overdue loan
+    action:
+      kind: fail
+      name: loan_overdue
+      message: '"it was due ".concat(.due_on).concat(" — return it first")'
+  - id: renew
+    title: Push the due date out a fortnight
+    action:
+      kind: update_model
+      model_name: loans
+  - id: contact
+    title: Where to tell the member
+    action:
+      kind: call_function
+      function: member_contact
+  - id: confirm
+    title: Tell the member it is renewed
+    action:
+      kind: api_call
+      method: post
+      path: /hooks/loan-renewed
+      input_schema:
+        kind: object
+        properties:
+          email:
+            kind: string
+      request_mode: per_item
+      external_api: notifications
+      credential:
+        kind: system
+        name: notifications_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: object("email", .email, "book", .context.book_title, "due_on", .context.due_on)
+            to: ".body"
+      output_schema:
+        kind: object
+        properties: {}
+      output_transform:
+        steps: []
+      response_format:
+        kind: json
+      output_mode: single
+      sends_sensitive_data: false
+  - id: tell_refused
+    title: Tell the member why not
+    action:
+      kind: api_call
+      method: post
+      path: /hooks/renewal-refused
+      input_schema:
+        kind: object
+        properties:
+          name:
+            kind: string
+          message:
+            kind: string
+      request_mode: per_item
+      external_api: notifications
+      credential:
+        kind: system
+        name: notifications_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: object("book", .context.book_title, "reason", .name, "message", .message)
+            to: ".body"
+      output_schema:
+        kind: object
+        properties: {}
+      output_transform:
+        steps: []
+      response_format:
+        kind: json
+      output_mode: single
+      sends_sensitive_data: false
+connections:
+  - from_id: entry
+    to_id: check
+    transform:
+      steps:
+        - kind: copy
+          from: ".id"
+          to: ".context.loan_id"
+        - kind: copy
+          from: ".member_id"
+          to: ".context.member_id"
+        - kind: copy
+          from: ".book_title"
+          to: ".context.book_title"
+        - kind: copy
+          from: ".status"
+          to: ".status"
+        - kind: copy
+          from: ".due_on"
+          to: ".due_on"
+        - kind: copy
+          from: ".renewals"
+          to: ".renewals"
+  - from_id: check
+    to_id: refuse_overdue
+    case: overdue
+  - from_id: check
+    to_id: renew
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.loan_id"
+          to: ".id"
+        - kind: copy
+          from: ".due_on.add_days(14)"
+          to: ".properties.due_on"
+        - kind: copy
+          from: coalesce(.renewals, 0).plus(1)
+          to: ".properties.renewals"
+        - kind: copy
+          from: ".due_on.add_days(14)"
+          to: ".context.due_on"
+    case: else
+  - from_id: renew
+    to_id: contact
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.member_id"
+          to: ".member_id"
+  - from_id: contact
+    to_id: confirm
+    transform:
+      steps:
+        - kind: copy
+          from: ".email"
+          to: ".email"
+on_error:
+  - errors:
+      - loan_overdue
+      - validation_failed
+    to: tell_refused

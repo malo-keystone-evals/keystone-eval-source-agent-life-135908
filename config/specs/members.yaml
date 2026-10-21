@@ -1,0 +1,231 @@
+# A library member. This spec is the showcase's data-protection tour: `phone`
+# carries a PII `sensitivity` (masked/redacted by the framework), `private_note`
+# uses `encrypted` storage (AES at rest, always a text column, never indexable),
+# and the `admin` policy sets a `security_requirement` so editing a member needs
+# a fresh session. `members` is also the join target of the `member` LOCAL role:
+# a member is paired to their `users` row through `user_id`, so each user gets
+# the `member` policy on their own record (see config/roles.yaml).
+version: 6
+initial_status: active
+workflow_tracked: true
+name: members
+singular_name: member
+display_name: Member
+description: >-
+  A person enrolled in the library. Paired to a users record via user_id, which
+  is how the `member` local role scopes each patron to their own data.
+icon_id: fa/solid/address-card
+nav_section: community
+identity:
+  title: display_name
+  subtitles:
+    - membership_tier
+statuses:
+  - name: active
+    description: A member in good standing who may borrow.
+  - name: suspended
+    description: Temporarily barred from borrowing (e.g. unpaid fines).
+policies:
+  - name: admin
+    description: Full control over member records.
+    # Editing PII on a member demands a recently-authenticated session.
+    security_requirement: fresh_session
+    permissions:
+      - kind: view
+        properties:
+          - "*"
+        status:
+          - active
+          - suspended
+        includes:
+          - "*"
+        lifecycle: true
+        # As on loans: the flag is the whole gate, so only `admin` holds it.
+        # The `member` policy below keeps its view permission and no audit
+        # read — a patron sees no audit history of their own membership.
+        audits: true
+      - kind: create
+        properties:
+          - user_id
+          - display_name
+          - membership_tier
+          - joined_on
+          - phone
+          - private_note
+        status:
+          - active
+        required_properties:
+          - user_id
+          - display_name
+      - kind: update
+        properties:
+          - display_name
+          - membership_tier
+          - phone
+          - private_note
+        status:
+          - active
+          - suspended
+      - kind: transition
+        from:
+          - active
+        to:
+          - suspended
+      - kind: transition
+        from:
+          - suspended
+        to:
+          - active
+      - kind: workflow
+        workflows:
+          - suspend_member
+          - request_loans
+        status:
+          - active
+  # Granted to each patron on their OWN member row by the `member` local role.
+  - name: member
+    description: View and edit your own membership details.
+    permissions:
+      - kind: view
+        # `user_id` is here for the filter/sort gate rather than for anything
+        # the member reads off it. The `member` Onboarding Process asks for
+        # "this user's own members row" by filtering on it, and
+        # `property_gate.rs` refuses a filter naming a property no policy the
+        # caller holds makes viewable — so without this the binding comes back
+        # as an unreadable step and the gate fails closed (ADR-0110 D11).
+        #
+        # Unlike the `email` case spelled out in specs/users.yaml, this widens
+        # nothing: the grant behind this policy is joined through `user_id`
+        # itself, so the only row it ever reaches is the caller's own. A filter
+        # naming somebody else's id matches nothing whichever way it is asked,
+        # which is what makes the column filterable here and not an oracle.
+        properties:
+          - user_id
+          - display_name
+          - membership_tier
+          - joined_on
+          - active_loan_count
+        status:
+          - active
+          - suspended
+      - kind: update
+        properties:
+          - display_name
+          - phone
+        status:
+          - active
+properties:
+  - name: user_id
+    description: The users record this member is paired to.
+    schema:
+      kind: string
+      format: uuid
+      required: true
+    foreign_key_to: users
+    storage:
+      kind: standard
+      storage_type: uuid
+      not_null: true
+      index: unique
+      on_delete: cascade
+  - name: display_name
+    description: How the member is shown around the library.
+    schema:
+      kind: string
+      required: true
+    storage:
+      kind: standard
+      storage_type: character varying
+      not_null: true
+      index: standard
+  - name: membership_tier
+    description: The member's tier, which governs borrowing limits.
+    schema:
+      kind: string
+      enum:
+        - bronze
+        - silver
+        - gold
+      default:
+        kind: string
+        value: bronze
+    itemset: membership_tiers
+    storage:
+      kind: standard
+      storage_type: character varying
+      not_null: true
+      index: standard
+      default_expr: '"bronze"'
+  - name: joined_on
+    description: The date the member enrolled.
+    schema:
+      kind: string
+      format: date
+      default:
+        kind: date_preset
+        preset: today
+    storage:
+      kind: standard
+      storage_type: date
+  - name: phone
+    description: Contact phone number (personally identifiable; masked in logs and shares).
+    schema:
+      kind: string
+      sensitivity: direct_p_i_i
+    filterable: false
+    storage:
+      kind: standard
+      storage_type: character varying
+  # A staff-only note carrying an indirect-PII `sensitivity` (masked in logs and
+  # shares). Kept as a plain column so the example runs with no ENCRYPTION_KEY;
+  # for a project-authored `encrypted` column see the credentials System Spec /
+  # ADR-0059.
+  - name: private_note
+    description: A staff-only note about the member (indirect PII; masked in logs and shares).
+    schema:
+      kind: string
+      sensitivity: indirect_p_i_i
+    editable: true
+    filterable: false
+    sortable: false
+    storage:
+      kind: standard
+      storage_type: text
+  - name: active_loan_count
+    description: How many loans the member currently has out, rolled up from loans.
+    schema:
+      kind: number
+      integer: true
+    editable: false
+    storage:
+      kind: aggregate
+      method: count
+      source:
+        model: loans
+        foreign_key: member_id
+        status:
+          - active
+          - overdue
+# The second half of the showcase's compliance record, and the one where both
+# PermissionsLists do work. `!suspended` means a suspended member's edits go
+# unlogged — but the suspension itself is recorded, because a transition is
+# logged when *either* side of it is permitted, and the member was active when
+# they were barred. `private_note` is denied outright: it is staff free text
+# about a person, and keeping a year of its old versions is not what an audit
+# log is for. Nothing else is left out, so nothing else is silently missing.
+#
+# `active_loan_count` being audited is deliberate, and it is the interesting
+# case. It is an `aggregate` maintained from *another* table: checking a book
+# out fires a trigger on `loans` that issues its own `UPDATE members SET
+# active_loan_count = …`, so it reaches this log as a `members` update event of
+# its own rather than riding along inside the loan's. The settings the loan's
+# write planted are still in force in that transaction, so the row names the
+# librarian who checked the book out and the `api` door they came through.
+audits:
+  status:
+    - "*"
+    - "!suspended"
+  properties:
+    - "*"
+    - "!private_note"
+  expiry_days: 365

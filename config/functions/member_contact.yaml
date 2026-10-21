@@ -1,0 +1,77 @@
+version: 3
+description: Look a member's name and email address up from their membership.
+icon_id: fa/regular/address-card
+inputs:
+  kind: object
+  properties:
+    member_id:
+      kind: string
+      required: true
+      format: uuid
+outputs:
+  kind: object
+  properties:
+    name:
+      kind: string
+      required: true
+    email:
+      kind: string
+      required: true
+errors:
+  - name: member_missing
+    description: No member has that id (or the caller cannot see it).
+nodes:
+  - id: member
+    title: Load the membership
+    action:
+      kind: fetch_model
+      model_name: members
+  - id: missing
+    title: Answer that there is no such member
+    action:
+      kind: fail
+      name: member_missing
+      message: '"no member ".concat(.context.member_id)'
+  - id: user
+    title: Load the member's user account
+    action:
+      kind: fetch_model
+      model_name: users
+  - id: answer
+    title: Answer with the name and address
+    action:
+      kind: return
+connections:
+  - from_id: entry
+    to_id: member
+    transform:
+      steps:
+        - kind: copy
+          from: ".member_id"
+          to: ".id"
+        - kind: copy
+          from: ".member_id"
+          to: ".context.member_id"
+  - from_id: member
+    to_id: missing
+    kind: empty
+  - from_id: member
+    to_id: user
+    transform:
+      steps:
+        - kind: copy
+          from: ".member.user_id"
+          to: ".id"
+        - kind: copy
+          from: ".member.display_name"
+          to: ".context.name"
+  - from_id: user
+    to_id: answer
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.name"
+          to: ".name"
+        - kind: copy
+          from: ".user.email"
+          to: ".email"

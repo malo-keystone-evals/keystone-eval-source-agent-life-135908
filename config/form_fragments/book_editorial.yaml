@@ -1,0 +1,29 @@
+# A reusable fragment of the book form — the "editorial metadata" fields. Pulled
+# into the Metadata tab of edit_book. Being a `model` fragment bound to books, it
+# can carry `properties.`-scoped field blocks and even record_fields.
+name: book_editorial
+schema:
+  kind: model
+  model_name: books
+blocks:
+  - kind: select_field
+    label: Genre
+    path_key: properties.genre
+    itemset_name: book_genres
+  - kind: side_by_side
+    primary:
+      kind: text_field
+      label: ISBN
+      path_key: properties.isbn
+    secondary:
+      kind: number_field
+      label: Page count
+      path_key: properties.page_count
+  - kind: text_field
+    label: Published on
+    path_key: properties.published_on
+    format: date
+  - kind: text_field
+    label: Cover image URL
+    path_key: properties.cover_url
+    format: url

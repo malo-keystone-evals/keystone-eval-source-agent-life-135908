@@ -1,0 +1,28 @@
+kind: workflow
+name: stamp
+# DEMO (ADR-0059): also opts in to plaintext. It carries the Sensitive `token`
+# through unchanged (a passthrough of the secret's substance), and additionally
+# derives a NON-secret FACT from it — `fingerprint` (the token's length). A fact
+# ABOUT a secret is not the secret's substance, so `fingerprint` is deliberately
+# NOT marked sensitive and flows freely. This is the "taint follows substance,
+# not facts" rule made concrete.
+decrypts_sensitive_data: true
+input:
+  kind: object
+  required: true
+  properties:
+    token:
+      kind: string
+      sensitivity: password
+      required: true
+output:
+  kind: object
+  required: true
+  properties:
+    token:
+      kind: string
+      sensitivity: password
+      required: true
+    fingerprint:
+      kind: string
+      required: true

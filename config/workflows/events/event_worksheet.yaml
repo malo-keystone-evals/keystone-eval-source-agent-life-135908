@@ -1,0 +1,146 @@
+version: 3
+run_as: system
+trigger:
+  kind: on_create
+  model_name: events
+  statuses:
+    - scheduled
+description: Render this session's attendee worksheet and attach it to the event.
+nodes:
+  - id: club
+    title: The club holding this session
+    action:
+      kind: fetch_model
+      model_name: clubs
+  - id: book
+    title: The club's current book, if it has one
+    action:
+      kind: query_model
+      model_name: books
+  - id: render
+    title: Render the attendee worksheet
+    action:
+      kind: render_document
+      document: event_worksheet
+      filename: worksheet-{.context.event.id}.pdf
+  - id: attach
+    title: Attach the worksheet to the event
+    action:
+      kind: update_model
+      model_name: events
+connections:
+  - from_id: entry
+    to_id: club
+    transform:
+      steps:
+        - kind: copy
+          from: ".club_id"
+          to: ".id"
+        - kind: copy
+          from: ".id"
+          to: ".context.event.id"
+        - kind: copy
+          from: ".title"
+          to: ".context.event.title"
+        - kind: copy
+          from: ".starts_at"
+          to: ".context.event.starts_at"
+        - kind: copy
+          from: '.venue.line1.concat(", ").concat(.venue.city)'
+          to: ".context.event.venue_name"
+        - kind: copy
+          from: ".capacity"
+          to: ".context.event.capacity"
+        - kind: copy
+          from: today()
+          to: ".context.generated_on"
+        - kind: copy
+          from: array("Whose story is this, really — and does the book agree with you?", "Where did the setting stop feeling invented and start feeling inhabited?", "What does the book think power costs? Do you believe it?", "One thing you would cut, and one you wanted more of.")
+          to: ".context.questions"
+  - from_id: club
+    to_id: book
+    transform:
+      steps:
+        - kind: where
+          property: id
+          equals: ".club.current_book_id"
+        - kind: copy
+          from: ".club.id"
+          to: ".context.club.id"
+        - kind: copy
+          from: ".club.name"
+          to: ".context.club.name"
+        - kind: copy
+          from: ".club.description"
+          to: ".context.club.description"
+        - kind: copy
+          from: ".club.meeting_format.kind"
+          to: ".context.club.meeting_format"
+  - from_id: book
+    to_id: render
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.event"
+          to: ".params.event"
+        - kind: copy
+          from: ".context.club"
+          to: ".params.club"
+        - kind: copy
+          from: ".context.generated_on"
+          to: ".params.generated_on"
+        - kind: copy
+          from: ".context.questions"
+          to: ".params.questions"
+        - kind: copy
+          from: ".book.id"
+          to: ".params.book.id"
+        - kind: copy
+          from: ".book.title"
+          to: ".params.book.title"
+        - kind: copy
+          from: ".book.author_name"
+          to: ".params.book.author_name"
+        - kind: copy
+          from: ".book.summary"
+          to: ".params.book.summary"
+        - kind: copy
+          from: ".book.genre"
+          to: ".params.book.genre"
+        - kind: copy
+          from: ".book.page_count"
+          to: ".params.book.page_count"
+        - kind: copy
+          from: "true"
+          to: ".params.has_book"
+    label: the club has a book
+  - from_id: book
+    to_id: render
+    kind: empty
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.event"
+          to: ".params.event"
+        - kind: copy
+          from: ".context.club"
+          to: ".params.club"
+        - kind: copy
+          from: ".context.generated_on"
+          to: ".params.generated_on"
+        - kind: copy
+          from: ".context.questions"
+          to: ".params.questions"
+        - kind: copy
+          from: "false"
+          to: ".params.has_book"
+  - from_id: render
+    to_id: attach
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.event.id"
+          to: ".id"
+        - kind: copy
+          from: ".file.id"
+          to: ".properties.worksheet_file_id"

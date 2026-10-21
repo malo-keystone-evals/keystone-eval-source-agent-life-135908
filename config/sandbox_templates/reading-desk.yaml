@@ -1,0 +1,8 @@
+version: 1
+description: >-
+  The reading desk's box: the framework image plus the desk's own skills, copied
+  from `reading-desk/` beside this file into the box's home (ADR-0120).
+# Nothing to install. The template exists for its directory: `reading-desk/`
+# lands at /home/user, and its `skills/INDEX.md` earns a line in the Sandbox
+# Briefing. The desk's prompt still says when to read it: a model treats the
+# briefing as an inventory, not an instruction.

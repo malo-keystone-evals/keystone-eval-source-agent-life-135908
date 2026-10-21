@@ -1,0 +1,84 @@
+# A project's own [[Email Template]] — the notice the library sends a member
+# whose loan has gone past its due date. Nothing here is framework-shipped: this
+# file is the whole of the email, and `loans/email_overdue_notice` is the
+# project's own workflow that sends it.
+#
+# The shape is identical to a framework template under `keystone-config/emails/`,
+# because there is only one shape. A file named `reset_code.yaml` in this
+# directory would override the framework's sign-in-code email wholesale; a file
+# named anything else, like this one, is simply a new email the project owns.
+version: 1
+name: overdue_notice
+description: Tells a member a book they borrowed is past its due date
+
+# `{$app_name}` is one of the two Easel environment bindings an email surface may
+# read — it is filled from [[Branding]] at send time, so this reads "Athenaeum"
+# here without the sending workflow having to know the project's name. The other
+# is `{$public_url}`, which the button at the bottom is built on.
+subject: "{.book_title} is overdue at {$app_name}"
+
+# What the sending side has to hand over. Every hole below is checked against
+# this at validation time, and `loans/email_overdue_notice`'s `send_email` node
+# is checked against it too — so a param this template stops reading, or one the
+# workflow stops supplying, is a build finding rather than a blank in someone's
+# inbox.
+params:
+  kind: object
+  required: true
+  properties:
+    member_name:
+      kind: string
+      required: true
+      description: How to address the member — their display name.
+    book_title:
+      kind: string
+      required: true
+      description: The book that is overdue.
+    due_on:
+      kind: string
+      required: true
+      description: The date it was due back, as the member would read it.
+    loan_id:
+      kind: string
+      required: true
+      description: The loan the button deep-links to.
+
+blocks:
+  # The opening band: the one fact the member needs before they read anything
+  # else. Display copy rather than markdown, and coloured by Branding.
+  - kind: hero
+    heading: Your loan is overdue
+    body: "{.book_title} was due back on {.due_on}."
+
+  # The body, in markdown — what to do about it, and the reassurance that
+  # matters most to someone who has just been told they are late.
+  - kind: section
+    body: |
+      {.member_name}, **{.book_title}** is still out on your card, and it was
+      due back on {.due_on}.
+
+      Bring it in whenever you next pass the library, or renew it from your
+      loans page if nobody else is waiting on it. Nothing is charged while a
+      loan is overdue — the notice is so the next reader knows when to expect
+      the book.
+
+  # A picture of where the book goes back. An image *block* is an element the
+  # author chose rather than markup smuggled into a sentence, and its `alt` is
+  # what stands in for it in the plain-text part. A literal URL has to be
+  # `https` — a masthead fetched over plaintext is a downgrade the reader never
+  # sees.
+  - kind: image
+    url: https://images.athenaeum.example.com/email/returns-desk.png
+    alt: The returns desk, just inside the library's front doors
+
+  # The one place a param lands in an attribute rather than in text. The URL is
+  # an [[Easel Template String]] like every other surface, and the base of it is
+  # `{$public_url}` — the address this deployment is reached at, which the
+  # framework binds from `PUBLIC_URL` (or, under `keystone-dev start`, from the
+  # port the dev server bound). Writing the deployment's own hostname here
+  # instead would be right in one environment and wrong in every other one of
+  # this same project; the binding carries no trailing slash, so the `/` below is
+  # the template's to write.
+  - kind: button
+    label: Renew or return it
+    url: "{$public_url}/loans/{.loan_id}"

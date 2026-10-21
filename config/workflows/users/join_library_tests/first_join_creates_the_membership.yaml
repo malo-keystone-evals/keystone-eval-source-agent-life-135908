@@ -1,0 +1,27 @@
+# The first run finds no membership for the user and creates one, active.
+version: 3
+name: first_join_creates_the_membership
+description: Joining with no membership yet creates an active one for the acting user.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+          first_name: Alice
+          last_name: Reader
+          status: active
+trigger:
+  kind: manual
+  record: u1
+  user_input:
+    display_name: Alice R.
+    membership_tier: silver
+expect:
+  world:
+    created:
+      members:
+        - fields:
+            user_id: u1
+            display_name: Alice R.
+            membership_tier: silver

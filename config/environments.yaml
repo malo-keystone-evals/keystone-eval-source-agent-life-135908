@@ -1,0 +1,7 @@
+environments:
+  - name: Development
+    api_url: http://localhost:3000
+    level: dev
+    default_connect:
+      email: admin@example.com
+      password: password

@@ -1,0 +1,19 @@
+# The member contact block, shared between the edit_member modal and the member
+# onboarding wizard so the two never drift. Shows a password-format field over
+# the encrypted `private_note` and a markdown note.
+name: member_contact
+schema:
+  kind: model
+  model_name: members
+blocks:
+  - kind: markdown
+    content: |
+      **Contact details are private.** Phone is stored as PII and the staff note
+      is encrypted at rest.
+  - kind: text_field
+    label: Phone
+    path_key: properties.phone
+  - kind: text_field
+    label: Staff note (encrypted)
+    path_key: properties.private_note
+    format: password

@@ -1,0 +1,11 @@
+kind: page
+framework: react
+name: book-secret
+# A record-bound tab on the book page (config/pages/book_page.yaml): it binds to
+# a single `books` record delivered as PageProps.subject, and calls the
+# `book_secret` anchored custom endpoint (config/workflows/books/reveal_secret.yaml)
+# to fetch that book's `webhook_secret`. The demo of ADR-0059 response egress:
+# an Encrypted Storage value, encrypted at rest, decrypted on the wire, rendered
+# in the browser.
+input:
+  subject_model: books

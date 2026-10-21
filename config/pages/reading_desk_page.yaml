@@ -1,0 +1,43 @@
+# STREAMED CHAT DEMO 1 (ADR-0071): the Reading Desk's page.
+#
+# A first-class `agent_chat` page. It names a workflow and nothing else about
+# the conversation model (D10/D30) — that the thread is per-member, and that a
+# member has many conversations, is read from the workflow's own `thread:` at
+# render time. The placement contributes cosmetics and `sidebar`.
+#
+# There is deliberately no `sidebar` key. Absent means "derive from the thread
+# shape", and this workflow has a conversation dimension, so a switcher appears
+# — which is what we want, and saying so explicitly would be restating the
+# conversation model the placement is not supposed to know (D30). A placement
+# may *hide* a switcher (`sidebar: false`, which means resume-latest, not
+# amnesia); `sidebar: true` on a workflow with no conversation dimension is a
+# validation error, because a placement may never conjure one.
+#
+# `route.roles` gates who can open the page; the endpoint's own `auth.roles`
+# gates who can call it. Those are two different gates and both are real — the
+# route roles keep the page out of a stranger's navigation, and the endpoint
+# roles are what actually stops a request. A page whose route lied would still
+# get a 403 from the server.
+version: 4
+name: reading_desk_page
+title: My reading desk
+icon_id: fa/solid/comments
+route:
+  section: library
+  path: /reading-desk
+  roles:
+    - admin
+    - patron
+  order: 4
+content:
+  kind: agent_chat
+  workflow: members/reading_desk
+  title: Your reading desk
+  placeholder: Ask the desk…
+  empty_state:
+    text: Ask about the catalogue, your loans, or what to read next. It remembers what you tell it.
+    suggestions:
+      - What should I read next?
+      - What have I got out at the moment?
+      - Anything overdue?
+      - I love fantasy but not horror — remember that.

@@ -1,0 +1,288 @@
+# AGENTIC THREADS DEMO (ADR-0069): the showcase for Thread identity and
+# State Bindings working together.
+#
+# - **Workflow-level Thread**: the `thread:` block below is the whole of the
+#   identity. It resolves once at dispatch — before the run exists — and keys
+#   every durable State Instance the run claims, whatever node claims it.
+#   Anchored to the *club*, so when the club's next event is created weeks
+#   later, the planner opens with every earlier session's planning in context.
+#   That is what lets it avoid repeating themes, and what `themes_covered`
+#   makes explicit as state.
+# - **Named state**: `plan` and `announce` both bind `state: {name:
+#   club_session}` — one conversation, two nodes. The announcer doesn't get a
+#   summary passed over an edge; it continues the exact conversation the
+#   planner had, reasoning and all. The binding names only the *namespace*:
+#   identity lives on the workflow, never on the node.
+# - **Claim-time seeding**: `init` stamps the club's identity once, when the
+#   instance is first created; `set` refreshes the current book and event date
+#   on every turn (clubs change books; init must not clobber history).
+#
+# Seeding a backdrop DOES fire this workflow — records are inserted through
+# the model store, so the per-table trigger runs like any other write. The
+# `library` backdrop's only event is `completed`, and this trigger wants
+# `scheduled`, which is why seeding it stays quiet. To watch the thread
+# continue, schedule two events for the *same* club: the second run reopens
+# the first one's conversation.
+version: 3
+run_as: system
+trigger:
+  kind: on_create
+  model_name: events
+  statuses:
+    - scheduled
+
+# The workflow-level Thread: one conversation per club, whatever node claims
+# it. `record` anchors it to a real `clubs` row rather than an opaque key, so
+# the thread is addressable as "the club's thread" and its `record_id` column
+# means something. No other dimension: every member's runs share one club
+# conversation, which is the point.
+thread:
+  record:
+    model: clubs
+    id: .club_id
+description: >-
+  When a club meeting is scheduled, one durable per-club conversation plans
+  the session (remembering every earlier one) and writes the announcement,
+  which is posted to the notifications webhook.
+
+# The shared conversation both agent nodes bind, keyed per club. The schema's
+# defaults seed a fresh club's thread; `_state` in both nodes' Turn Outputs
+# has this shape.
+agent_states:
+  club_session:
+    schema:
+      kind: object
+      properties:
+        club_id:
+          kind: string
+        club_name:
+          kind: string
+        current_book:
+          kind: string
+        last_event_at:
+          kind: string
+        themes_covered:
+          kind: array
+          items:
+            kind: string
+
+nodes:
+  - id: load_club
+    title: Load the club (for its current book)
+    action:
+      kind: fetch_model
+      model_name: clubs
+  - id: plan
+    title: Plan the session in the club's thread
+    action:
+      kind: agentic_loop
+      model:
+        profile:
+          kind: static
+          name: mini-thinking
+        credential:
+          kind: system
+          name: open_ai_api
+      system_prompt: |
+        You plan discussion sessions for the book club "{.club_name}". The
+        club is currently reading {.current_book}. Themes already covered in
+        earlier sessions: {.themes_covered.to_string()} — do not repeat
+        them; this conversation contains every earlier session you planned,
+        so build on it. Record each fresh theme this session will explore
+        with `note_theme`, then submit the final agenda with `submit_plan`.
+      input_schema:
+        kind: object
+        properties:
+          message:
+            kind: string
+            required: true
+          club_id:
+            kind: string
+            required: true
+          club_name:
+            kind: string
+          book_title:
+            kind: string
+          event_title:
+            kind: string
+          starts_at:
+            kind: string
+      state:
+        name: club_session
+        init:
+          club_id: .club_id
+          club_name: .club_name
+        set:
+          current_book: .book_title
+          last_event_at: .starts_at
+      termination:
+        max_iterations: 6
+        tools: [submit_plan]
+      tools:
+        - kind: state
+          name: note_theme
+          description: Record a theme this session will explore, so later sessions can avoid repeating it.
+          input:
+            kind: object
+            properties:
+              theme:
+                kind: string
+                required: true
+          state_update:
+            themes_covered: ".themes_covered.concat($input.theme)"
+          message: "Noted. Themes so far: {.themes_covered.to_string()}"
+        - kind: state
+          name: submit_plan
+          description: Submit the finished session agenda.
+          input:
+            kind: object
+            properties:
+              agenda:
+                kind: string
+                required: true
+          message: "Plan submitted."
+  - id: announce
+    title: Write the announcement from the same conversation
+    action:
+      kind: agentic_loop
+      model:
+        profile:
+          kind: static
+          name: mini-thinking
+        credential:
+          kind: system
+          name: open_ai_api
+      system_prompt: |
+        You write warm, concise announcements for the book club
+        "{.club_name}". You are continuing the planning conversation —
+        turn the agenda just agreed into a member-facing announcement.
+      input_schema:
+        kind: object
+        properties:
+          message:
+            kind: string
+            required: true
+          club_id:
+            kind: string
+            required: true
+      state:
+        name: club_session
+      structured_output:
+        kind: object
+        properties:
+          headline:
+            kind: string
+            required: true
+          body:
+            kind: string
+            required: true
+      termination:
+        max_iterations: 3
+  - id: send
+    title: Post the announcement webhook
+    action:
+      kind: api_call
+      method: post
+      path: /hooks/club-session
+      input_schema:
+        kind: object
+        properties:
+          club_name:
+            kind: string
+          headline:
+            kind: string
+          body:
+            kind: string
+      request_mode: per_item
+      external_api: notifications
+      credential:
+        kind: system
+        name: notifications_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: object("event", "club_session_planned", "club", .club_name, "headline", .headline, "body", .body)
+            to: ".body"
+      output_schema:
+        kind: object
+        properties: {}
+      output_transform:
+        steps: []
+      response_format:
+        kind: json
+      output_mode: single
+
+connections:
+  - from_id: entry
+    to_id: load_club
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: ".club_id"
+          to: ".id"
+        - kind: copy
+          from: ".club_id"
+          to: ".context.club_id"
+        - kind: copy
+          from: ".club_name"
+          to: ".context.club_name"
+        - kind: copy
+          from: ".title"
+          to: ".context.event_title"
+        - kind: copy
+          from: ".starts_at"
+          to: ".context.starts_at"
+  - from_id: load_club
+    to_id: plan
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: '"Plan the session \"".concat(.context.event_title).concat("\" — the club is reading ").concat(coalesce(.club.current_book_title, "nothing yet")).concat(".")'
+          to: ".message"
+        - kind: copy
+          from: ".context.club_id"
+          to: ".club_id"
+        - kind: copy
+          from: ".context.club_name"
+          to: ".club_name"
+        - kind: copy
+          from: ".club.current_book_title"
+          to: ".book_title"
+        - kind: copy
+          from: ".context.event_title"
+          to: ".event_title"
+        - kind: copy
+          from: ".context.starts_at"
+          to: ".starts_at"
+  # The announcer re-enters the same conversation: its `message` is just the
+  # next user turn. Nothing here carries the thread — that was resolved at
+  # dispatch and is stamped on the run, so both nodes land in it by
+  # construction. `club_id` rides out of `_state` only because the announcer's
+  # `input_schema` declares it.
+  - from_id: plan
+    to_id: announce
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: '"Now write the member-facing announcement for the session we just planned."'
+          to: ".message"
+        - kind: copy
+          from: "._state.club_id"
+          to: ".club_id"
+  - from_id: announce
+    to_id: send
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: "._state.club_name"
+          to: ".club_name"
+        - kind: copy
+          from: ".output.value.headline"
+          to: ".headline"
+        - kind: copy
+          from: ".output.value.body"
+          to: ".body"

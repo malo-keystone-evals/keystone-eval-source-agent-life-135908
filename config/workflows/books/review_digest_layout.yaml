@@ -1,0 +1,19 @@
+nodes:
+  entry:
+    x: 120.0
+    "y": 210.0
+  gather:
+    x: 930.0
+    "y": 120.0
+  nothing_to_digest:
+    x: 660.0
+    "y": 330.0
+  post:
+    x: 1200.0
+    "y": 120.0
+  reviews:
+    x: 390.0
+    "y": 210.0
+  tone:
+    x: 660.0
+    "y": 120.0

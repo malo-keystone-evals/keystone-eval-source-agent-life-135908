@@ -1,0 +1,55 @@
+# The good-faith branch: one scripted classifier turn, no moderation agent —
+# the switch routes the `praise` category straight to the tag-stamping
+# update. No `llm_turns` exist for `moderate`, so the case would
+# fail loudly if routing ever sent the item there.
+version: 3
+name: praise_is_tagged_without_moderation
+description: A praise review gets its category stamped as a tag; the moderation agent never runs.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    members:
+      - $alias: m1
+        fields:
+          display_name: Alice Reader
+          user_id: u1
+    reviews:
+      - $alias: r1
+        fields:
+          book_id: b1
+          member_id: m1
+          rating: 5
+          headline: Pure wonder
+          body: The best book I have read in years.
+          status: published
+llm_turns:
+  classify:
+    - tool_calls:
+        - name: output
+          args:
+            value:
+              category: praise
+              reason: Positive, in good faith.
+trigger:
+  kind: on_create
+  record: r1
+expect:
+  world:
+    updated:
+      reviews:
+        - record: r1
+          changes:
+            tags: [praise]

@@ -1,0 +1,48 @@
+# No current book: the `where` step builds a null check that matches nothing,
+# and the Empty Edge carries the Item Context on to the same render.
+version: 3
+name: a_club_between_books_still_gets_one
+description: A club between books takes the Empty Edge and still gets its worksheet.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: admin@example.com
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    clubs:
+      - $alias: c1
+        fields:
+          name: Dune Readers
+          status: active
+    events:
+      - $alias: e1
+        fields:
+          club_id: c1
+          title: Session One
+          starts_at: "2026-08-12T18:00:00Z"
+          capacity: 12
+          venue:
+            line1: 1 Library Lane
+            city: Lewes
+          status: scheduled
+trigger:
+  kind: on_create
+  record: e1
+expect:
+  world:
+    updated:
+      events:
+        - record: e1
+          changes:
+            worksheet_file_id:
+              $file: {}

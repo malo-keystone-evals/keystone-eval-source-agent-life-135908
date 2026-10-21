@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+#
+# keystone-dev — the single, generic entry point to keystone-dev for this
+# project. It resolves the project's pinned Keystone version, downloads the
+# matching keystone-dev release binary (once, cached per version), and runs it
+# natively, passing its exit code straight through.
+#
+# Every verb — pure ones like `validate`/`test` and host-orchestration ones like
+# `refresh`/`reset`/`version` — runs entirely inside the binary: since the CLI
+# runs natively on the host, host orchestration (docker compose, DB ops) is plain
+# subprocess work in the binary, not a plan handed back to this script. So this
+# wrapper enumerates NO verbs and needs no per-verb logic; all version-sensitive
+# behaviour lives in the pinned binary, keeping this wrapper stable across
+# Keystone versions.
+#
+# Owned by keystone-dev-cli (regenerate-mode managed file); do not hand-edit.
+set -euo pipefail
+
+# Project root = the directory containing this script's parent (bin/..).
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Pin the binary to the project's Keystone version so the engine matches the
+# config schema. Honour an existing env var, else read .env, else latest.
+if [ -z "${KEYSTONE_VERSION:-}" ] && [ -f "$ROOT/.env" ]; then
+  KEYSTONE_VERSION="$(grep -E '^KEYSTONE_VERSION=' "$ROOT/.env" | head -n1 | cut -d= -f2-)"
+fi
+KEYSTONE_VERSION="${KEYSTONE_VERSION:-latest}"
+
+# Release-asset contract with .github/workflows/release.yml (roadmap stage 08
+# task 01): assets are named "<binary>-<target>" and the version lives in the
+# release tag "vX.Y.Z". A single musl target by design.
+REPO="chessworld/ElevateR"
+TARGET="x86_64-unknown-linux-musl"
+ASSET="keystone-dev-$TARGET"
+
+# Per-version cache so a version bump is a new download, not a re-fetch each run.
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/keystone-dev/bin"
+CACHED_BIN="$CACHE_DIR/keystone-dev-$KEYSTONE_VERSION"
+
+# The release binary is a musl static build for one platform. ARM, macOS and
+# Windows are out of scope; on WSL, run from the linux side. The dev override
+# below bypasses this for locally built binaries.
+require_supported_platform() {
+  local os arch
+  os="$(uname -s)"
+  arch="$(uname -m)"
+  if [ "$os" != "Linux" ] || [ "$arch" != "x86_64" ]; then
+    cat >&2 <<EOF
+keystone-dev: unsupported platform ($os/$arch).
+The release binary is built only for linux/x86_64 (musl). ARM, macOS and
+Windows are out of scope; on WSL, run from the linux side. To run a locally
+built binary anyway, set KEYSTONE_DEV_BIN=/path/to/keystone-dev.
+EOF
+    exit 1
+  fi
+}
+
+auth_help() {
+  cat >&2 <<EOF
+keystone-dev: no GitHub credentials to download the release binary.
+The Keystone repo is private, so fetching the pinned binary needs auth — the
+same access you already use for ghcr. Do one of:
+  * install the GitHub CLI (https://cli.github.com) and run: gh auth login
+  * export GITHUB_TOKEN (or GH_TOKEN) with a token that can read $REPO releases
+Or, to run a locally built binary, set KEYSTONE_DEV_BIN=/path/to/keystone-dev.
+EOF
+}
+
+# Download $ASSET to the path in $1 via the GitHub CLI (which carries its own
+# auth: gh login or GH_TOKEN). Returns 2 when gh isn't installed so the caller
+# falls through to the token path; non-zero otherwise on a failed fetch.
+download_with_gh() {
+  local out="$1"
+  command -v gh >/dev/null 2>&1 || return 2
+  if [ "$KEYSTONE_VERSION" = "latest" ]; then
+    gh release download --repo "$REPO" --pattern "$ASSET" \
+      --output "$out" --clobber >/dev/null 2>&1
+  else
+    gh release download "v$KEYSTONE_VERSION" --repo "$REPO" --pattern "$ASSET" \
+      --output "$out" --clobber >/dev/null 2>&1
+  fi
+}
+
+# Extract the numeric asset id whose "name" equals $1 from a GitHub release JSON
+# on stdin. Prefers jq, then python3, then a best-effort grep for the {id,name}
+# object (GitHub emits "id" before "name" within each asset).
+asset_id_for() {
+  local name="$1"
+  if command -v jq >/dev/null 2>&1; then
+    jq -r --arg n "$name" '.assets[] | select(.name==$n) | .id' 2>/dev/null | head -n1
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$name" <<'PY' 2>/dev/null
+import json, sys
+name = sys.argv[1]
+data = json.load(sys.stdin)
+for a in data.get("assets", []):
+    if a.get("name") == name:
+        print(a.get("id"))
+        break
+PY
+    return 0
+  fi
+  tr -d '\n' <&0 | tr '{' '\n' \
+    | grep -F "\"name\":\"$name\"" \
+    | grep -oE '"id":[0-9]+' | head -n1 | grep -oE '[0-9]+'
+}
+
+# Download $ASSET to $1 with a personal access token via the release API. The
+# private-repo asset endpoint needs the numeric id + Accept: octet-stream (the
+# browser_download_url isn't token-authable). Returns 2 when no token or no curl.
+download_with_token() {
+  local out="$1" token api json asset_id
+  token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+  [ -n "$token" ] || return 2
+  command -v curl >/dev/null 2>&1 || return 2
+  if [ "$KEYSTONE_VERSION" = "latest" ]; then
+    api="https://api.github.com/repos/$REPO/releases/latest"
+  else
+    api="https://api.github.com/repos/$REPO/releases/tags/v$KEYSTONE_VERSION"
+  fi
+  json="$(curl -fsSL -H "Authorization: Bearer $token" \
+    -H "Accept: application/vnd.github+json" "$api")" || return 1
+  asset_id="$(printf '%s' "$json" | asset_id_for "$ASSET")"
+  [ -n "$asset_id" ] || return 1
+  curl -fsSL -H "Authorization: Bearer $token" -H "Accept: application/octet-stream" \
+    "https://api.github.com/repos/$REPO/releases/assets/$asset_id" -o "$out"
+}
+
+# Ensure the pinned release binary is present at $CACHED_BIN, downloading it once
+# per version. A cached binary needs no platform check (it already ran here).
+ensure_binary() {
+  [ -x "$CACHED_BIN" ] && return 0
+  require_supported_platform
+  mkdir -p "$CACHE_DIR"
+  local tmp="$CACHED_BIN.download.$$"
+  if download_with_gh "$tmp" || download_with_token "$tmp"; then
+    chmod +x "$tmp"
+    mv -f "$tmp" "$CACHED_BIN"
+    return 0
+  fi
+  rm -f "$tmp"
+  if ! command -v gh >/dev/null 2>&1 && [ -z "${GITHUB_TOKEN:-${GH_TOKEN:-}}" ]; then
+    auth_help
+  else
+    echo "keystone-dev: failed to download $ASSET for version '$KEYSTONE_VERSION' from $REPO" >&2
+    echo "  (check the version is released and your GitHub credentials can read it)" >&2
+  fi
+  exit 1
+}
+
+# Resolve the binary to run. An explicit local build (dev override — how native
+# changes are tested before a release carries them) bypasses download and the
+# platform guard entirely; otherwise download-and-cache the pinned release.
+if [ -n "${KEYSTONE_DEV_BIN:-}" ]; then
+  BIN="$KEYSTONE_DEV_BIN"
+else
+  ensure_binary
+  BIN="$CACHED_BIN"
+fi
+
+# Best-effort fish completion install from the local binary. Skipped in CI, on
+# non-fish shells, and if anything goes wrong (writes stderr-silently and never
+# blocks the real command). A stamp keyed on {basename, KEYSTONE_VERSION} means
+# we only regenerate when the pinned version changes.
+install_fish_completions() {
+  [ -t 1 ] || return 0
+  case "${SHELL:-}" in *"/fish") ;; *) return 0 ;; esac
+  local base
+  base="$(basename "${BASH_SOURCE[0]}")"
+  local cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/keystone-dev-completions"
+  local conf_dir="${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"
+  local stamp="$cache_dir/$base.version"
+  if [ -f "$stamp" ] && [ "$(cat "$stamp" 2>/dev/null)" = "$KEYSTONE_VERSION" ] \
+      && [ -f "$conf_dir/$base.fish" ]; then
+    return 0
+  fi
+  mkdir -p "$cache_dir" "$conf_dir" 2>/dev/null || return 0
+  if "$BIN" completions fish --command "$base" >"$conf_dir/$base.fish.tmp" 2>/dev/null; then
+    mv "$conf_dir/$base.fish.tmp" "$conf_dir/$base.fish"
+    printf '%s' "$KEYSTONE_VERSION" >"$stamp"
+  else
+    rm -f "$conf_dir/$base.fish.tmp"
+  fi
+}
+install_fish_completions || true
+
+# Run the binary natively and pass its exit code straight through. Every verb —
+# including host orchestration like refresh/reset/version — completes inside the
+# binary; `version` re-enters by exec'ing ./bin/keystone-dev refresh as a plain
+# subprocess (which the dev override, inherited here, resolves to the same
+# local build), so this wrapper has nothing left to do after the binary returns.
+exec "$BIN" "$@"

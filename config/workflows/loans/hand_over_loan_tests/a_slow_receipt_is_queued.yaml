@@ -1,0 +1,51 @@
+# The receipt hook times out: the second handler's switch takes the slow
+# branch, queues the receipt to send later, and logs the failure.
+version: 3
+name: a_slow_receipt_is_queued
+description: A receipt hook that times out queues the receipt and logs it.
+now: 2026-06-01T00:00:00Z
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+          first_name: Alice
+          last_name: Reader
+    members:
+      - $alias: m1
+        fields:
+          user_id: u1
+          display_name: Alice R.
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    loans:
+      - $alias: l1
+        fields:
+          book_id: b1
+          member_id: m1
+          due_on: "2026-06-15"
+          status: requested
+external:
+  send_receipt:
+    $fail:
+      kind: timeout
+trigger:
+  kind: manual
+  record: l1
+expect:
+  calls:
+    queue_receipt:
+      - body:
+          email: alice@example.com
+    log_outage:
+      - body:
+          event: timeout

@@ -1,0 +1,46 @@
+version: 3
+run_as: system
+trigger:
+  kind: on_enter
+  model_name: loans
+  statuses:
+    - overdue
+description: When a loan goes overdue, email the member a notice naming the book. The member's name and address come from the member_contact Function, shared with the loan renewal.
+nodes:
+  - id: contact
+    title: Who holds the loan, and where to write
+    action:
+      kind: call_function
+      function: member_contact
+  - id: notify
+    title: Email the overdue notice
+    action:
+      kind: send_email
+      template: overdue_notice
+connections:
+  - from_id: entry
+    to_id: contact
+    transform:
+      steps:
+        - kind: copy
+          from: ".member_id"
+          to: ".member_id"
+        - kind: copy
+          from: ".id"
+          to: ".context.loan_id"
+        - kind: copy
+          from: ".book_title"
+          to: ".context.book_title"
+        - kind: copy
+          from: ".due_on"
+          to: ".context.due_on"
+  - from_id: contact
+    to_id: notify
+    transform:
+      steps:
+        - kind: copy
+          from: ".email"
+          to: ".to"
+        - kind: copy
+          from: object("member_name", .name, "book_title", .context.book_title, "due_on", .context.due_on, "loan_id", .context.loan_id)
+          to: ".params"

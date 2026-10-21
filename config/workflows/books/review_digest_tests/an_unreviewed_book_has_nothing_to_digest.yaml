@@ -1,0 +1,40 @@
+# No reviews: the query's Empty Edge reaches the Fail node, so the run ends
+# with `no_reviews` instead of posting an empty digest.
+version: 3
+name: an_unreviewed_book_has_nothing_to_digest
+description: A book with no reviews fails as no_reviews and posts nothing.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+      - $alias: u2
+        fields:
+          email: bob@example.com
+    members:
+      - $alias: m1
+        fields:
+          user_id: u1
+          display_name: Alice R.
+      - $alias: m2
+        fields:
+          user_id: u2
+          display_name: Bob K.
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+trigger:
+  kind: manual
+  record: b1
+expect:
+  errors:
+    - node_id: nothing_to_digest
+      message: nobody has reviewed Dune yet

@@ -1,0 +1,67 @@
+# Reviews, with the moderate_review (existing_record) modal wired as both the
+# per-row edit action and an explicit entry in the modals action-set.
+version: 4
+name: reviews_listing
+title: Reviews
+icon_id: fa/solid/star
+route:
+  section: circulation
+  path: /reviews
+  roles:
+    - admin
+    - librarian
+  order: 2
+content:
+  kind: listing
+  model_name: reviews
+  views:
+    - kind: table
+      default_sort:
+        column: created_at
+        direction: desc
+      columns:
+        # This listing seeds `default_filters` with status = published, so the
+        # chip would say the same thing on every row it opens with. `hidden` is
+        # how a page turns the Status Column off (ADR-0095) — and it is not a
+        # removal: the column keeps its place in the customize-columns menu, so
+        # a reader who clears the filter can bring the chip back.
+        status:
+          visibility: hidden
+        rating:
+          label: Rating
+        body:
+          label: Review
+        recommended:
+          label: Recommends
+          renderer:
+            kind: boolean
+            presentation: yes_no
+    # `body` is a Markdown Property, so the card renders it as markdown
+    # clamped to `summary_lines` — the table view above shows the same
+    # property as its raw string, which is what a one-line row can carry.
+    - kind: cards
+      card:
+        summary_property: body
+        summary_lines: 6
+        tags:
+          - property: tags
+            default_color: gray
+      default_sort:
+        column: created_at
+        direction: desc
+  default_filters:
+    - propertyName: status
+      operator: eq
+      valueAExpr: published
+      valueBExpr: null
+      not: false
+  page_actions:
+    add_modal: write_review
+  record_actions:
+    related_links:
+      - "*"
+    edit_modal: moderate_review
+    # The page a row opens, here and on the book page's Reviews tab, which
+    # names this listing as the one its rows stand in for.
+    record_page: review_page
+    show_status: true

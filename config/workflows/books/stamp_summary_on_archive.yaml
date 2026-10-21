@@ -1,0 +1,25 @@
+version: 3
+run_as: system
+trigger:
+  kind: on_enter
+  model_name: books
+  statuses:
+    - archived
+nodes:
+  - id: stamp_summary
+    title: Note the archival on the summary
+    action:
+      kind: update_model
+      model_name: books
+connections:
+  - from_id: entry
+    to_id: stamp_summary
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: ".id"
+          to: ".id"
+        - kind: copy
+          from: '"Archived - no longer in the active catalogue."'
+          to: ".properties.summary"

@@ -1,0 +1,152 @@
+version: 3
+run_as: system
+trigger:
+  kind: manual
+  model_name: books
+  status:
+    - draft
+    - published
+description: >-
+  Writes a short shelf blurb for one book, under a [[Spend Budget]] read from
+  the book itself — the example of ADR-0110's ceiling, and the smallest
+  workflow that can actually reach one.
+# ── What this example is for ──────────────────────────────────────────────────
+#
+# A budget is checked *before every model call*, against what the scope has
+# already banked. A first call therefore always proceeds — nothing is banked
+# yet — so a workflow can only demonstrate a ceiling if it makes more than one
+# call. That is what the `notes` tool below is for: the terminal tool's guard
+# refuses until a note exists, so the shortest honest path through this agent
+# is two model calls, and the second is the one the ceiling can stop.
+#
+# `scope: run` rather than `record`: this is a blurb, not a delegation. Each
+# invocation gets its own allowance, and running it twice on the same book is
+# two pieces of work rather than one that resumed. A workflow whose runs
+# continue each other — an agent woken repeatedly about the same record — wants
+# `record`, which is the default for exactly that reason.
+spend:
+  # A record property, and `coalesce` over it — the idiom ADR-0110 names.
+  #
+  # The ceiling has to be **total over the entry Item**: one that cannot be
+  # evaluated fails the turn rather than quietly vanishing, so an expression
+  # that can error is a workflow that can refuse to run. A column is always
+  # present on the Item and merely sometimes null, which is what makes
+  # `coalesce` work here — where the same shape over an optional dispatch input
+  # would not, because an absent key is an evaluation error rather than a null.
+  #
+  # Five dollars is the author's default, not "unlimited": a blank field has to
+  # mean something, and only the workflow knows what.
+  budget_usd: coalesce(.blurb_budget_usd, 5)
+  scope: run
+
+nodes:
+  - id: blurb
+    title: Write the shelf blurb
+    action:
+      kind: agentic_loop
+      model:
+        # **The other half of a cost control** (ADR-0112). The budget above
+        # says what a run may spend; this says what a turn costs in the first
+        # place, and a featured book — the one going on the front table — is
+        # worth thinking harder about than the rest of the shelf.
+        #
+        # Which is also why the profiles are named after the models and not
+        # after this: `catalogue_desk` uses `mini-fast` for every book and is
+        # not making a lesser choice, it is doing a different job.
+        profile:
+          kind: expression
+          expr: if(coalesce(.featured, false), "mini-thinking", "mini-fast")
+        credential:
+          kind: system
+          name: open_ai_api
+      # Over the agent's own fields, not the book: a system prompt is rendered
+      # against state. The book arrives in the turn's first message, which the
+      # entry connection composes.
+      # The node's input contract (ADR-0067). An agentic node receives
+      # `{ message }` unless it declares more, and anything its own config
+      # reads off the Item has to be declared here — `featured` is read by the
+      # `model.profile` expression above, exactly as `state.init`/`set` fields
+      # are read in other workflows. Undeclared, the expression is checked
+      # against `{ message }` and refused at validation, which is the point.
+      input_schema:
+        kind: object
+        properties:
+          message:
+            kind: string
+            required: true
+          featured:
+            kind: boolean
+      system_prompt: |
+        You write shelf blurbs for a lending library.
+
+        Work in two steps. First call `note` once with the angle you intend to
+        take — one sentence on what makes this book worth picking up. Then call
+        `submit` with the blurb itself: at most forty words, present tense, no
+        spoilers, no quotation marks.
+
+        Notes so far: {.notes.length()}.
+      state:
+        schema:
+          kind: object
+          properties:
+            notes:
+              kind: array
+              items:
+                kind: string
+      force_tool_call: true
+      termination:
+        # `null` — no iteration bound. Legal here, and only here, because the
+        # workflow declares a `spend:` budget above: money is what stops this
+        # agent, and a turn count beside it would be a second limit to keep
+        # current that could only ever fire first by accident.
+        #
+        # Validation refuses a null ceiling on a workflow with no budget
+        # (`workflow/agent-unbounded-loop`). Omitting the key entirely is the
+        # third state and means the 50-iteration default — a backstop for a
+        # node with no opinion, which this node is not.
+        max_iterations: null
+        tools:
+          - submit
+      tools:
+        - kind: state
+          name: note
+          description: Record the angle you intend to take, before writing.
+          input:
+            kind: object
+            properties:
+              angle:
+                kind: string
+                required: true
+          state_update:
+            notes: '.notes.concat($input.angle)'
+          message: noted — {.notes.length()} note(s)
+        - kind: state
+          name: submit
+          description: Hand in the finished blurb.
+          input:
+            kind: object
+            properties:
+              blurb:
+                kind: string
+                required: true
+          # The guard is what makes this agent take two model calls rather than
+          # one, which is what gives the budget something to stop.
+          guards:
+            - condition: ".notes.length().gt(0)"
+              error: Call `note` with your angle before submitting a blurb.
+          message: blurb filed
+connections:
+  - from_id: entry
+    to_id: blurb
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: '"Write the shelf blurb for \"".concat(.title).concat("\", genre ").concat(coalesce(.genre, "unknown")).concat(".")'
+          to: ".message"
+        # Carries `featured` into the Item the node receives, to match the
+        # `input_schema` it declares. A `copy` builds a fresh Item, so anything
+        # the node reads has to be carried across here or it is simply absent.
+        - kind: copy
+          from: .featured
+          to: .featured

@@ -1,0 +1,44 @@
+# A review form showing a `conditional` block: the tags field and its prompt
+# only appear once "I recommend this book" is ticked.
+version: 3
+name: write_review
+icon_id: fa/solid/star
+description: Write a review for a book.
+content:
+  kind: form
+  blocks:
+    - kind: id_search_field
+      label: Book
+      path_key: properties.book_id
+      model_name: books
+    - kind: id_search_field
+      label: Member
+      path_key: properties.member_id
+      model_name: members
+    - kind: number_field
+      label: Rating (1–5)
+      path_key: properties.rating
+    - kind: text_field
+      label: Headline
+      path_key: properties.headline
+    # `body` is a Markdown Property, so this is the block the schema would
+    # derive on its own (ADR-0078 D1) — spelled out here because the rest of
+    # this form is.
+    - kind: markdown_field
+      label: Review
+      path_key: properties.body
+    - kind: checkbox_field
+      label: I recommend this book
+      path_key: properties.recommended
+    - kind: conditional
+      expr: .properties.recommended
+      blocks:
+        - kind: markdown
+          content: Nice! Add a few tags to help others find it.
+        - kind: string_array_field
+          label: Tags
+          path_key: properties.tags
+subject:
+  kind: new_record
+  model_name: reviews
+  initial_status: published

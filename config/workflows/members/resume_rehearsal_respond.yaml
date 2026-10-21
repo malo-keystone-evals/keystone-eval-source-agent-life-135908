@@ -1,0 +1,69 @@
+version: 3
+run_as: user
+description: Rehearsal fixture for restart-mid-chat — a long single-response agent turn to restart the server under.
+trigger:
+  kind: endpoint
+  path: resume_rehearsal_respond
+  method: post
+  timeout_seconds: 300
+  returns:
+    - code: 200
+      body:
+        kind: object
+        properties:
+          text: { kind: string }
+  input_schema:
+    kind: object
+    properties:
+      message: { kind: string, required: true }
+      conversation_id: { kind: string, required: true }
+thread:
+  user: true
+  id: .input.conversation_id
+nodes:
+  - id: assistant
+    title: Answer, suspending across a restart
+    action:
+      kind: agentic_loop
+      model:
+        profile: { kind: static, name: mini-fast }
+        credential: { kind: system, name: open_ai_api }
+      system_prompt: >-
+        You are a careful essayist. For every request: first call the `note`
+        tool three times, one short point each, one call at a time. Then write
+        the essay itself: at least 600 words, in several paragraphs.
+      state:
+        schema:
+          kind: object
+          properties:
+            notes:
+              kind: array
+              items: { kind: string }
+      termination:
+        max_iterations: 8
+      tools:
+        - kind: state
+          name: note
+          description: Record one short point for the essay.
+          input:
+            kind: object
+            properties:
+              text: { kind: string, required: true }
+          state_update:
+            notes: '.notes.concat($input.text)'
+          message: "noted {$input.text}"
+  - id: reply
+    title: Return the answer
+    action:
+      kind: respond
+      status: 200
+connections:
+  - from_id: entry
+    to_id: assistant
+    transform:
+      steps:
+        - kind: copy
+          from: ".input.message"
+          to: ".message"
+  - from_id: assistant
+    to_id: reply

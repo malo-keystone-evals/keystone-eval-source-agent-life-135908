@@ -1,0 +1,75 @@
+# The project's default dashboard (DashboardTemplate, ADR-0044) — one optional
+# file per project, resolved per-user into a concrete dashboard. It shows both
+# widget kinds (record_count, add_modal_button), section- and widget-level gates
+# (roles + visible_if), and a `data` binding: `me` looks up the current user's
+# own members row, and the "My membership" section only survives when that
+# lookup finds a record.
+version: 1
+# Curated Scenario(s) the studio previews this dashboard against.
+previews:
+  - library_admin
+data:
+  me:
+    spec: members
+    query:
+      steps:
+        - kind: copy
+          from: object("filters", array(object("kind", "single", "property", "user_id", "not", false, "values", array(.user.id))))
+          to: .
+sections:
+  - title: Catalogue
+    widgets:
+      - kind: record_count
+        label: Published books
+        model_name: books
+        query:
+          steps:
+            - kind: copy
+              from: object("filters", array(object("kind", "single", "property", "status", "not", false, "values", array("published"))))
+              to: .
+      - kind: record_count
+        label: Active clubs
+        model_name: clubs
+        query:
+          steps:
+            - kind: copy
+              from: object("filters", array(object("kind", "single", "property", "status", "not", false, "values", array("active"))))
+              to: .
+      - kind: add_modal_button
+        label: Add a book
+        modal_name: edit_book
+  - title: Circulation
+    roles:
+      - admin
+      - librarian
+    widgets:
+      - kind: record_count
+        label: On loan
+        model_name: loans
+        query:
+          steps:
+            - kind: copy
+              from: object("filters", array(object("kind", "single", "property", "status", "not", false, "values", array("active"))))
+              to: .
+      - kind: record_count
+        label: Overdue
+        model_name: loans
+        query:
+          steps:
+            - kind: copy
+              from: object("filters", array(object("kind", "single", "property", "status", "not", false, "values", array("overdue"))))
+              to: .
+      - kind: add_modal_button
+        label: Check out a book
+        modal_name: edit_loan
+  - title: My membership
+    visible_if: .me
+    widgets:
+      - kind: record_count
+        label: Books I have out
+        model_name: loans
+        query:
+          steps:
+            - kind: copy
+              from: object("filters", array(object("kind", "single", "property", "member_id", "not", false, "values", array(.me.id))))
+              to: .

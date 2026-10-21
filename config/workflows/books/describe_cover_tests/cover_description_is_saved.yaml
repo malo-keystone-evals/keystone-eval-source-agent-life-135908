@@ -1,0 +1,43 @@
+# DECLARED VIEWED FILE (ADR-0114): the book's seeded cover reaches the node
+# through `view: [.cover_image_id]`, and whatever the model says about it is
+# written back to `cover_description`. A Test Case cannot see what the model was
+# shown — the scripted turn stands in for the model — so what it asserts is the
+# workflow's half: the book's id rides state, not the model, and the save lands
+# on the right record.
+version: 3
+name: cover_description_is_saved
+description: The model's description of a book's cover is written onto the book.
+backdrop:
+  files:
+    - $alias: cover
+      path: files/earthsea-cover.png
+  records:
+    authors:
+      - $alias: a1
+        fields:
+          name: Ursula K. Le Guin
+    books:
+      - $alias: b1
+        fields:
+          title: A Wizard of Earthsea
+          author_id: a1
+          status: published
+          cover_image_id: cover
+trigger:
+  kind: manual
+  record: b1
+  user_input: {}
+llm_turns:
+  describe:
+    - tool_calls:
+        - name: output
+          args:
+            value:
+              cover_description: "A dark green island rises from a teal sea striped with pale diagonal lines, under a sky fading from cream to blue."
+expect:
+  world:
+    updated:
+      books:
+        - record: b1
+          changes:
+            cover_description: "A dark green island rises from a teal sea striped with pale diagonal lines, under a sky fading from cream to blue."

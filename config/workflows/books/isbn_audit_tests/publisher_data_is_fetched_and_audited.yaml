@@ -1,0 +1,108 @@
+# NAMED SANDBOX DEMO (D6/D17). The point of this case is that it needs **no E2B
+# and no API keys**: the scripted sandbox host stands in for the box exactly as
+# canned `llm_turns` stand in for the model, so the whole shape — a
+# `sandbox_exec` node preparing a box, an agent working in the same box — runs
+# offline and deterministic.
+#
+# What it pins down that nothing else can:
+#
+#   - the setup node's four commands run **in order** and their output lands on
+#     the node's `commands` array;
+#   - the agent's own commands run after the setup step's, scripted against the
+#     files it left, so the wiring of a shared box is exercised end to end. Be
+#     precise about what this cannot prove: the scripted host hands back canned
+#     output, so it does not itself demonstrate one filesystem. That the two
+#     nodes address one box is a property of the key
+#     (`one_declaration_on_one_thread_is_one_box` in `agent_sandbox.rs`) and of
+#     a live E2B run;
+#   - a declared credential is scripted like any other command, so the case
+#     proves the wiring without holding a secret.
+#
+# Note there is no `sandbox:` entry for `mkdir`. An unscripted command fails the
+# turn with an error naming what *was* scripted, so leaving one out is how you
+# discover a command you did not know the node ran — which is why the `mkdir` is
+# listed even though it prints nothing.
+version: 3
+name: publisher_data_is_fetched_and_audited
+description: >-
+  The setup node fetches the publisher record into the box, and the agent audits
+  the catalogue against it from that same box.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: admin@example.com
+    authors:
+      - $alias: a1
+        fields:
+          name: Ursula K. Le Guin
+    books:
+      - $alias: b1
+        fields:
+          title: The Dispossesed
+          author_id: a1
+          status: published
+          isbn: "9780060512750"
+# No `actor:`. The workflow runs as the system with `grant_name: isbn_audit`, so
+# there is no acting identity for a case to set — declaring one is refused
+# (`test-case/actor-mismatch`) rather than accepted and ignored. The `u1` row in
+# the backdrop stays because `books`' `admin` policy still gates who may *fire*
+# the run — a `kind: workflow` permission on the spec since ADR-0089, no longer
+# a list on the trigger; what it never did is decide what the box can reach.
+# The box, scripted. Earlier entries win, so the specific commands come before
+# any broader fallback would.
+sandbox:
+  # The idempotent working directory. Prints nothing and exits 0 — listed
+  # because an unscripted command is an error, not a no-op.
+  - command: mkdir -p /home/user/audit
+  # The catalogue record, read with the run's own token and written to a file —
+  # so, like the two below, it prints nothing.
+  - command: keystone show books
+  # The fetch. `--silent` means a successful curl prints nothing, which is what
+  # makes this entry's empty stdout the honest fixture rather than a lazy one.
+  - command: curl --fail
+  # The jq summary, redirected to a file — so it too prints nothing.
+  - command: jq
+  # The agent's first command — a read of the file the setup step wrote. On a
+  # real box this is only readable because both nodes name `sandbox: audit`;
+  # here it is canned, and what the case pins down is that the agent gets as far
+  # as asking for it.
+  - command: cat /home/user/audit/summary.json
+    stdout: |
+      {
+        "title": "The Dispossessed",
+        "authors": ["Ursula K. Le Guin"],
+        "publisher": "Harper Perennial",
+        "date": "2003-04-01",
+        "pages": 400
+      }
+  # The catalogue side of the comparison, through the CLI.
+  - command: keystone query books
+    stdout: |
+      {"id":"b1","title":"The Dispossesed","isbn":"9780060512750","status":"published"}
+llm_turns:
+  audit:
+    - tool_calls:
+        - name: shell
+          args:
+            command: cat /home/user/audit/summary.json
+            summary: read publisher summary
+    - tool_calls:
+        - name: shell
+          args:
+            command: keystone query books
+            summary: read the catalogue row
+    - text: >-
+        The catalogue has the title as "The Dispossesed" — the publisher record
+        spells it "The Dispossessed", with a double s. Author, publisher and
+        year all agree. Worth a one-character fix on the catalogue entry.
+trigger:
+  kind: manual
+  record: b1
+# Nothing is written: this workflow reports, it does not correct. Asserting the
+# world is *unchanged* is the honest expectation, and it is what would catch an
+# agent given a write it was never meant to have — the `isbn_audit` grant
+# confers the read-only `catalogue` policy and nothing else.
+expect:
+  world: {}

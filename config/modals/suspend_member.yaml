@@ -1,0 +1,35 @@
+# A `workflow`-subject modal: submitting it dispatches the members/suspend_member
+# manual-trigger workflow against the member the modal was opened on. This is the
+# only sanctioned way a workflow is surfaced from record_actions — a modal whose
+# subject is the workflow, listed in the record page's `modals`.
+#
+# The trigger declares `dispatch_mode: per_record`, so this same modal is also
+# what a [[Selection]] of members opens — ONCE for all of them, whatever the
+# count (ADR-0106 D15). Everything below is written for both: the prose speaks
+# of what is selected rather than naming one member, and the reason typed into
+# the field goes to every run identically.
+#
+# The path key is **bare** — `reason`, not `properties.reason`. This modal's
+# data is the workflow's `user_input` object, whose shape is the trigger's
+# `user_input_schema` and nothing else; a workflow modal's form does not get its
+# fields from that schema by itself, so the field below is what puts it on the
+# screen.
+version: 3
+name: suspend_member
+title: Suspend member
+icon_id: fa/solid/user-slash
+content:
+  kind: form
+  blocks:
+    - kind: markdown
+      content: |
+        Suspending a member blocks new loans until they are reinstated. This
+        runs the **Suspend member** workflow over everything selected — one run
+        each, transitioning the record and posting a notification.
+    - kind: text_field
+      label: Reason
+      path_key: reason
+subject:
+  kind: workflow
+  workflow_path: members/suspend_member
+  workflow_name: suspend_member

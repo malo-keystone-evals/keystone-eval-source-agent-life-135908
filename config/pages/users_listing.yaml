@@ -1,0 +1,86 @@
+# The users admin screen, and the page that carries **Invite user**.
+#
+# A workflow-subject modal is surfaced from `record_actions.modals` — the
+# per-selected-row action set — which is why the invite action lives beside a
+# selected user rather than in `page_actions`: the dispatch carries a record id,
+# and an invitation has no record of its own until the run makes one. The
+# selected row is the permission gate and nothing more; see
+# `workflows/users/invite_user.yaml`.
+#
+# There is deliberately **no `add_modal`**. An account created by hand would be
+# one nobody has proved they own, and it would have no password — inviting is how
+# a user is added here.
+version: 4
+name: users_listing
+title: Users
+icon_id: fa/regular/users-rectangle
+route:
+  section: ops
+  path: /users
+  roles:
+    - admin
+  order: 3
+content:
+  kind: listing
+  model_name: users
+  views:
+    - kind: table
+      default_sort:
+        column: last_name
+        direction: asc
+      # A listing's default columns are every viewable property. The four
+      # credential columns — `password_digest`, `password_reset_token`,
+      # `invitation_token`, `email_change_token` — are `viewable: false` on the
+      # spec, so they are not among them and need no entry here: the gate is on
+      # the property, where it also keeps them out of API responses, rather than
+      # on this one table. The rest of the pending email-change set
+      # (`pending_email`, `email_change_sent_at`, `email_change_sends`) is
+      # `viewable: false` for a different reason — a change in flight is its
+      # owner's business, and they hear about it through the current-user
+      # payload — but it drops out of this listing the same way.
+      #
+      # What is left of the invitation is `invitation_sent_at`, which is the
+      # half an administrator actually needs: whether the link has been sent,
+      # and when it runs out. The reset bookkeeping below is viewable but noise
+      # on a directory screen, so `disabled` takes those columns out altogether
+      # — not merely unticked in the column picker.
+      columns:
+        first_name:
+          label: First name
+        last_name:
+          label: Last name
+        email:
+          label: Email
+        invitation_sent_at:
+          label: Invited
+          renderer:
+            kind: date_time
+            presentation: date_time_short
+        librarian_role:
+          label: Librarian
+        patron_role:
+          label: Patron
+        admin_role:
+          label: Admin
+        circulation_role:
+          label: Circulation
+        password_reset_sent_at:
+          visibility: disabled
+        password_reset_attempts:
+          visibility: disabled
+        password_reset_sends:
+          visibility: disabled
+  record_actions:
+    related_links:
+      - "*"
+    show_status: true
+    # `fields:` draws the deprecated Item Details block, and declaring it
+    # reports `page/record-actions-fields-deprecated`. Kept deliberately: this
+    # model has no record page for the display to move to, so the example keeps
+    # a live instance of the shape the finding points away from.
+    fields:
+      - first_name
+      - last_name
+      - email
+    modals:
+      - "*"

@@ -1,0 +1,50 @@
+# The switch's else exit: a category no case names fails with a Named Error,
+# where the old filtered edges dropped it without a word.
+version: 3
+name: an_unknown_category_fails_by_name
+description: A category the switch has no case for fails as unknown_category instead of being dropped.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    members:
+      - $alias: m1
+        fields:
+          display_name: Alice Reader
+          user_id: u1
+    reviews:
+      - $alias: r1
+        fields:
+          book_id: b1
+          member_id: m1
+          rating: 5
+          headline: Pure wonder
+          body: The best book I have read in years.
+          status: published
+llm_turns:
+  classify:
+    - tool_calls:
+        - name: output
+          args:
+            value:
+              category: neutral
+              reason: Neither praise nor complaint.
+trigger:
+  kind: on_create
+  record: r1
+expect:
+  errors:
+    - node_id: unknown_category
+      message: neutral

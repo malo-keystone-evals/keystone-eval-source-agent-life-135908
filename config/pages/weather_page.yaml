@@ -1,0 +1,17 @@
+version: 4
+name: weather_page
+title: Weather
+icon_id: fa/solid/gauge-high
+route:
+  section: ops
+  path: /weather
+  roles:
+    - admin
+    - librarian
+  order: 1
+# A whole-page plugin (ADR-0039): the `weather` page plugin *is* the page, with
+# no bound record. It calls the `weather` custom endpoint via
+# props.keystone.callEndpoint (see plugins/page/weather).
+content:
+  kind: plugin
+  plugin_name: weather

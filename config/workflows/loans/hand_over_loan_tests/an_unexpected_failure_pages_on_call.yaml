@@ -1,0 +1,49 @@
+# A 404 from the receipt hook is an http_4xx, which no named handler takes:
+# the general handler's switch finds it is not a refusal and pages on call.
+version: 3
+name: an_unexpected_failure_pages_on_call
+description: A receipt hook refusing with 404 pages on call through the general handler.
+now: 2026-06-01T00:00:00Z
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+          first_name: Alice
+          last_name: Reader
+    members:
+      - $alias: m1
+        fields:
+          user_id: u1
+          display_name: Alice R.
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    loans:
+      - $alias: l1
+        fields:
+          book_id: b1
+          member_id: m1
+          due_on: "2026-06-15"
+          status: requested
+external:
+  send_receipt:
+    $fail:
+      status: 404
+trigger:
+  kind: manual
+  record: l1
+expect:
+  calls:
+    page_failure:
+      - body:
+          service: hand_over_loan
+          error: http_4xx

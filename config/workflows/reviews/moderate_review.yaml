@@ -1,0 +1,189 @@
+version: 3
+run_as: system
+trigger:
+  kind: on_create
+  model_name: reviews
+  statuses:
+    - published
+description: 'Every new review is classified with one model call, then a switch routes it: praise and complaints get their category stamped as a tag, abuse and spam go to a tool-using moderation agent, and anything else fails by name rather than vanishing. The review''s id rides in the Item Context, so no model has to echo it back.'
+nodes:
+  - id: classify
+    title: Classify the review
+    action:
+      kind: agentic_loop
+      model:
+        profile:
+          kind: static
+          name: mini-fast
+        credential:
+          kind: system
+          name: open_ai_api
+      system_prompt: |
+        You classify a single library book review into exactly one category:
+        praise (positive, in good faith), complaint (negative, in good
+        faith), abuse (insults, harassment, profanity directed at people), or
+        spam (advertising, links, off-topic promotion). Give a one-sentence
+        reason.
+      structured_output:
+        kind: object
+        properties:
+          category:
+            kind: string
+            required: true
+          reason:
+            kind: string
+            required: true
+      force_tool_call: false
+      termination:
+        max_iterations: 3
+  - id: route
+    title: Benign or flagged?
+    action:
+      kind: switch
+      cases:
+        - name: benign
+          when: '.output.value.category.eq("praise").or(.output.value.category.eq("complaint"))'
+        - name: flagged
+          when: '.output.value.category.eq("abuse").or(.output.value.category.eq("spam"))'
+  - id: unknown_category
+    title: Refuse a category the classifier should not give
+    action:
+      kind: fail
+      name: unknown_category
+      message: '"the classifier answered ".concat(.output.value.category)'
+  - id: moderate
+    title: Moderate the flagged review
+    action:
+      kind: agentic_loop
+      model:
+        profile:
+          kind: static
+          name: mini-thinking
+        credential:
+          kind: system
+          name: open_ai_api
+      system_prompt: |
+        You are the moderation agent for a lending library. You receive a
+        review that was flagged as abuse or spam, with its review id. Work the
+        case: log at least one note explaining your judgement (log_note),
+        redact the review text if it should not stay readable
+        (redact_review), then finish with submit — action `hide` to take the
+        review down, `keep` if it was flagged in error. Notes so far:
+        {.notes.length()}. Already redacted: {.redacted}.
+      state:
+        schema:
+          kind: object
+          properties:
+            notes:
+              kind: array
+              items:
+                kind: object
+                properties:
+                  id:
+                    kind: string
+                    required: true
+                  note:
+                    kind: string
+                    required: true
+            redacted:
+              kind: boolean
+              required: true
+      force_tool_call: true
+      termination:
+        max_iterations: 8
+        tools:
+          - submit
+      tools:
+        - kind: state
+          name: log_note
+          description: Record one moderation note on the case file.
+          input:
+            kind: object
+            properties:
+              note:
+                kind: string
+                required: true
+          state_update:
+            notes: '.notes.concat(object("id", uuid4(), "note", $input.note))'
+          message: noted — {.notes.length()} note(s) on file
+        - kind: plugin
+          plugin: redact_review
+          enabled: ".redacted.eq(false)"
+        - kind: state
+          name: submit
+          description: Close the case. Log a note first.
+          input:
+            kind: object
+            properties:
+              review_id:
+                kind: string
+                required: true
+              action:
+                kind: string
+                required: true
+                description: hide | keep
+              reason:
+                kind: string
+                required: true
+          guards:
+            - condition: ".notes.length().gt(0)"
+              error: Log at least one moderation note before submitting.
+          message: case closed
+  - id: stamp_tag
+    title: Stamp the category as a tag
+    action:
+      kind: update_model
+      model_name: reviews
+  - id: hide
+    title: Take the review down
+    action:
+      kind: transition_model
+      model_name: reviews
+connections:
+  - from_id: entry
+    to_id: classify
+    transform:
+      steps:
+        - kind: copy
+          from: ".id"
+          to: ".context.review_id"
+        - kind: copy
+          from: '"Headline: ".concat(.headline).concat(". Body: ").concat(coalesce(.body, ""))'
+          to: ".message"
+  - from_id: classify
+    to_id: route
+  - from_id: route
+    to_id: stamp_tag
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.review_id"
+          to: ".id"
+        - kind: copy
+          from: object("tags", array(.output.value.category))
+          to: ".properties"
+    case: benign
+  - from_id: route
+    to_id: moderate
+    transform:
+      steps:
+        - kind: copy
+          from: '"Flagged review ".concat(.context.review_id).concat(" — classifier reason: ").concat(.output.value.reason).concat(". Investigate and close the case.")'
+          to: ".message"
+    case: flagged
+  - from_id: route
+    to_id: unknown_category
+    case: else
+  - from_id: moderate
+    to_id: hide
+    filters:
+      - filter_selector: '.output.submit.action.eq("hide")'
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.review_id"
+          to: ".id"
+        - kind: copy
+          from: '"hidden"'
+          to: ".status"
+    label: moderator chose hide

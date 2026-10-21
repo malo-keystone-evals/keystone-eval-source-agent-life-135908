@@ -1,0 +1,16 @@
+# An edit-only (`existing_record`) modal — the counterpart to write_review's
+# create-only `new_record`. Used by moderators to tidy a review's text.
+version: 3
+name: moderate_review
+icon_id: fa/solid/gavel
+description: Edit a review's text during moderation.
+content:
+  kind: form
+  blocks:
+    - kind: record_fields
+      properties:
+        - headline
+        - body
+subject:
+  kind: existing_record
+  model_name: reviews

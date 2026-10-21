@@ -1,0 +1,31 @@
+# A hand-laid form: a headed `group` of identity fields (including an
+# id_search_field onto the users spec and a select over the tiers itemset),
+# followed by the shared member_contact fragment.
+version: 3
+name: edit_member
+icon_id: fa/solid/address-card
+description: Enrol a new member or edit an existing one.
+content:
+  kind: form
+  blocks:
+    - kind: group
+      name: identity
+      title: Membership
+      blocks:
+        - kind: id_search_field
+          label: User account
+          path_key: properties.user_id
+          model_name: users
+        - kind: text_field
+          label: Display name
+          path_key: properties.display_name
+        - kind: select_field
+          label: Tier
+          path_key: properties.membership_tier
+          itemset_name: membership_tiers
+    - kind: fragment
+      fragment_name: member_contact
+subject:
+  kind: record
+  model_name: members
+  initial_status: active

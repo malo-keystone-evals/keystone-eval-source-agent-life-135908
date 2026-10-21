@@ -1,0 +1,4 @@
+ALTER TABLE reviews__body_embeds DROP CONSTRAINT IF EXISTS reviews__body_embeds__fk_1oezcimdixp;
+ALTER TABLE reviews__body_embeds DROP CONSTRAINT IF EXISTS reviews__body_embeds__fk_21uvcicx0vt;
+DROP INDEX IF EXISTS reviews__body_embeds__idx_21uvcicx0vt;
+DROP TABLE reviews__body_embeds;

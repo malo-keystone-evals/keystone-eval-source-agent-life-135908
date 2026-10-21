@@ -1,0 +1,31 @@
+kind: workflow
+name: redact_review
+# AGENTIC DEMO (ADR-0063): a Workflow Node Plugin used as an AGENT TOOL. The
+# reviews/moderate_review workflow offers it to its `moderate` agent; the
+# manifest below is the single source of truth for the LLM-facing tool
+# definition (description + input schema), and the agent-tool invocation hands
+# the plugin a third argument — `agent: { state, context }` — alongside the
+# usual `(input, keystone)`.
+description: >-
+  Redact an abusive or spammy review in place: overwrite its headline and body
+  with a moderation notice via the keystone bridge. Call it once, before
+  submitting.
+input:
+  kind: object
+  required: true
+  properties:
+    review_id:
+      kind: string
+      required: true
+      description: The id of the review record to redact.
+    notice:
+      kind: string
+      required: true
+      description: The reader-facing text that replaces the review's body.
+output:
+  kind: object
+  required: true
+  properties:
+    review_id:
+      kind: string
+      required: true

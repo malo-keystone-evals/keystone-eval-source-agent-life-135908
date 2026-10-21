@@ -1,0 +1,102 @@
+version: 3
+run_as: system
+trigger:
+  kind: manual
+  model_name: members
+  status:
+    - active
+  # One run per member, so a selection of members means what it looks like it
+  # means: this workflow moves one member to suspended and posts one webhook
+  # about that member, and N checked members are N of those — each answering
+  # the `active` status gate and the member's own `kind: workflow` permission
+  # on its own, each refused on its own. `bundled` would ask for one run over
+  # all N, which is not a thing the server builds; validation refuses it.
+  dispatch_mode: per_record
+  # What the modal's form hands over, and the one thing a selection launch
+  # proves: the modal opens ONCE for every checked member and this reason goes
+  # to all of their runs identically (ADR-0106 D15).
+  #
+  # Not `required`: this workflow is also dispatched with no form at all — the
+  # rehearsal cases fire it straight through `runWorkflow` — and a required
+  # schema would refuse those. So the entry connection reads the key defensively
+  # rather than assuming it, which is what `get` below is for.
+  user_input_schema:
+    kind: object
+    properties:
+      reason:
+        kind: string
+        description: Why the membership is being suspended, for the staff notification.
+description: Suspend a member and post a staff notification over the webhook.
+nodes:
+  - id: suspend
+    title: Move the member to suspended
+    action:
+      kind: transition_model
+      model_name: members
+  - id: notify
+    title: Notify staff over the webhook
+    action:
+      kind: api_call
+      method: post
+      path: /hooks/member-suspended
+      input_schema:
+        kind: object
+        properties:
+          member_id:
+            kind: string
+          reason:
+            kind: string
+      request_mode: per_item
+      external_api: notifications
+      credential:
+        kind: system
+        name: notifications_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: >-
+              object("event", "member_suspended", "member_id", .member_id,
+              "reason", .reason)
+            to: ".body"
+      output_schema:
+        kind: object
+        properties: {}
+      output_transform:
+        steps: []
+      response_format:
+        kind: json
+      output_mode: single
+connections:
+  - from_id: entry
+    to_id: suspend
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: ".id"
+          to: ".id"
+        - kind: copy
+          from: suspended
+          to: ".status"
+        - kind: copy
+          from: ".id"
+          to: ".context.member_id"
+        # Read off the entry item defensively: a dispatch with no form at all
+        # carries no `user_input` key, and a plain `.user_input.reason` would
+        # drop the Item rather than yield null. `get` on the item itself gives
+        # an empty object to read the reason out of, and an empty reason where
+        # nobody typed one.
+        - kind: copy
+          from: '.get("user_input", object()).get("reason", "")'
+          to: ".context.reason"
+  - from_id: suspend
+    to_id: notify
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: ".context.member_id"
+          to: ".member_id"
+        - kind: copy
+          from: ".context.reason"
+          to: ".reason"

@@ -1,0 +1,4 @@
+ALTER TABLE workflow_errors DROP CONSTRAINT IF EXISTS workflow_errors__fk_184kdgrcb59, ADD CONSTRAINT workflow_errors__fk_cp7eedsmj8 FOREIGN KEY (workflow_run_id) REFERENCES workflow_runs (id);
+ALTER TABLE workflow_errors DROP CONSTRAINT IF EXISTS workflow_errors__fk_qu66hmfi9m, ADD CONSTRAINT workflow_errors__fk_1ax0wyt9cd FOREIGN KEY (workflow_step_id) REFERENCES workflow_steps (id);
+ALTER TABLE workflow_schedules DROP CONSTRAINT IF EXISTS workflow_schedules__fk_du20axrhlu, ADD CONSTRAINT workflow_schedules__fk_cp7eedsmj8 FOREIGN KEY (workflow_run_id) REFERENCES workflow_runs (id);
+ALTER TABLE workflow_steps DROP CONSTRAINT IF EXISTS workflow_steps__fk_184kdgrcb59, ADD CONSTRAINT workflow_steps__fk_cp7eedsmj8 FOREIGN KEY (workflow_run_id) REFERENCES workflow_runs (id);

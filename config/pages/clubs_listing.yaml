@@ -1,0 +1,34 @@
+# Reading clubs. `show_share` surfaces the ShareToken affordance (clubs declares
+# a `sharing` block and a `share` permission), letting staff publish a club's
+# page publicly.
+version: 4
+name: clubs_listing
+title: Reading Clubs
+icon_id: fa/regular/users-rectangle
+route:
+  section: community
+  path: /clubs
+  roles:
+    - admin
+    - librarian
+    - patron
+  order: 3
+content:
+  kind: listing
+  model_name: clubs
+  views:
+    - kind: table
+      default_sort:
+        column: name
+        direction: asc
+  page_actions:
+    add_modal: edit_club
+  record_actions:
+    related_links:
+      - "*"
+    edit_modal: edit_club
+    record_page: club_page
+    show_status: true
+    show_share: true
+    modals:
+      - "*"

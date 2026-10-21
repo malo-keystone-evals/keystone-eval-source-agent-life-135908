@@ -1,0 +1,120 @@
+# Request several books for a member at once. A `foreach` spreads the chosen
+# book ids into one Item each, so the create runs once per book; a `reduce`
+# gathers the created loans back into one Item, and a lambda maps them to the
+# list the notification carries. The member's id is set once in the Item
+# Context and survives the reduce, because every Item it folds agrees on it.
+version: 3
+run_as: system
+trigger:
+  kind: manual
+  model_name: members
+  status:
+    - active
+  user_input_schema:
+    kind: object
+    required: true
+    properties:
+      book_ids:
+        kind: array
+        required: true
+        description: The books to request.
+        items:
+          kind: string
+          format: uuid
+          required: true
+description: >-
+  Request a loan for each chosen book, three weeks long, and post one
+  notification listing them.
+nodes:
+  - id: each_book
+    title: One request per book
+    action:
+      kind: foreach
+      list: .user_input.get("book_ids", array())
+      as: book_id
+  - id: request
+    title: Request the loan
+    action:
+      kind: create_model
+      model_name: loans
+  - id: gather
+    title: Gather the requests
+    action:
+      kind: reduce
+      reducer:
+        kind: build_array
+  - id: notify
+    title: Tell the desk what was requested
+    action:
+      kind: api_call
+      method: post
+      path: /hooks/loans-requested
+      input_schema:
+        kind: object
+        properties:
+          member_id:
+            kind: string
+          book_ids:
+            kind: array
+            items:
+              kind: string
+      request_mode: per_item
+      external_api: notifications
+      credential:
+        kind: system
+        name: notifications_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: object("member", .member_id, "count", .book_ids.count(), "books", .book_ids)
+            to: ".body"
+      output_schema:
+        kind: object
+        properties: {}
+      output_transform:
+        steps: []
+      response_format:
+        kind: json
+      output_mode: single
+connections:
+  - from_id: entry
+    to_id: each_book
+    transform:
+      steps:
+        - kind: copy
+          from: .id
+          to: .context.member_id
+        - kind: copy
+          from: .user_input
+          to: .user_input
+  - from_id: each_book
+    to_id: request
+    transform:
+      steps:
+        - kind: copy
+          from: '"requested"'
+          to: .status
+        - kind: copy
+          from: .book_id
+          to: .properties.book_id
+        - kind: copy
+          from: .context.member_id
+          to: .properties.member_id
+        - kind: copy
+          from: today()
+          to: .properties.borrowed_on
+        - kind: copy
+          from: today().add_days(21)
+          to: .properties.due_on
+  - from_id: request
+    to_id: gather
+  - from_id: gather
+    to_id: notify
+    transform:
+      steps:
+        - kind: copy
+          from: .context.member_id
+          to: .member_id
+        - kind: copy
+          from: '.result.map({$x => $x.loan.book_id})'
+          to: .book_ids

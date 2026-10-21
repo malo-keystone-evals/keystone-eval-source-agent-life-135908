@@ -1,0 +1,53 @@
+# The happy path: the switch lets an active loan through, the due date moves
+# a fortnight, and the member — found by member_contact — is told.
+version: 3
+name: an_active_loan_is_renewed
+description: An active loan gets fourteen more days and the member is told.
+now: 2026-06-01T00:00:00Z
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+          first_name: Alice
+          last_name: Reader
+    members:
+      - $alias: m1
+        fields:
+          user_id: u1
+          display_name: Alice R.
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    loans:
+      - $alias: l1
+        fields:
+          book_id: b1
+          member_id: m1
+          due_on: "2026-06-10"
+          status: active
+trigger:
+  kind: manual
+  record: l1
+expect:
+  world:
+    updated:
+      loans:
+        - record: l1
+          changes:
+            due_on: "2026-06-24"
+            renewals: 1
+  calls:
+    confirm:
+      - body:
+          email: alice@example.com
+          book: Dune
+          due_on: "2026-06-24"

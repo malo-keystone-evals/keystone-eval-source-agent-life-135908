@@ -1,0 +1,215 @@
+# A member's review of a book. Feeds the `books` rollups (only `published`
+# reviews count toward review_count / rating_total / average_rating). Shows an
+# `array` schema (tags, stored as jsonb) and a bounded `number` (rating 1–5).
+# Creating a review fires the `notify_new_review` workflow, whose api_call uses
+# an http_bearer System Credential.
+version: 4
+initial_status: published
+workflow_tracked: true
+name: reviews
+singular_name: review
+display_name: Review
+description: >-
+  A member's rating and write-up of a book. Published reviews roll up into the
+  book's average rating; hidden ones are moderated out of sight.
+# The spec's own edit modal, which is the legacy wiring and reports
+# `spec/default-modal-deprecated`. Kept deliberately: a surface that declares
+# no `record_actions` — the book page's Reviews tab — has nothing else to
+# resolve an edit from, and `moderate_review` is named only by the reviews
+# listing and the review record page. It is what the tab's identity-cell
+# pencil opens, and what `?edit=reviews:<id>` opens on arrival, so the example
+# keeps a live instance of the shape the finding points away from.
+edit_modal: moderate_review
+icon_id: fa/solid/star
+nav_section: circulation
+identity:
+  title: headline
+  subtitles:
+    - rating
+statuses:
+  - name: published
+    description: Visible to everyone and counted in the book's rating.
+  - name: hidden
+    description: Moderated out of view and excluded from the rating.
+policies:
+  - name: admin
+    description: Full control, including moderation.
+    permissions:
+      - kind: view
+        properties:
+          - "*"
+        status:
+          - "*"
+        includes:
+          - "*"
+        lifecycle: true
+      - kind: create
+        properties:
+          - book_id
+          - member_id
+          - rating
+          - headline
+          - body
+          - recommended
+          - tags
+        status:
+          - published
+        required_properties:
+          - book_id
+          - member_id
+          - rating
+          - headline
+      - kind: update
+        properties:
+          - headline
+          - body
+          - recommended
+          - tags
+        status:
+          - published
+          - hidden
+      - kind: transition
+        from:
+          - published
+        to:
+          - hidden
+      - kind: transition
+        from:
+          - hidden
+        to:
+          - published
+  - name: member
+    description: Write and edit your own reviews.
+    permissions:
+      - kind: view
+        properties:
+          - book_id
+          - rating
+          - headline
+          - body
+          - recommended
+          - tags
+        status:
+          - published
+      - kind: create
+        properties:
+          - book_id
+          - member_id
+          - rating
+          - headline
+          - body
+          - recommended
+          - tags
+        status:
+          - published
+        required_properties:
+          - book_id
+          - member_id
+          - rating
+          - headline
+      - kind: update
+        properties:
+          - headline
+          - body
+          - recommended
+          - tags
+        status:
+          - published
+  - name: catalogue
+    description: Read published reviews.
+    permissions:
+      - kind: view
+        properties:
+          - book_id
+          - rating
+          - headline
+          - body
+          - recommended
+          - tags
+        status:
+          - published
+properties:
+  - name: book_id
+    description: The book being reviewed.
+    schema:
+      kind: string
+      format: uuid
+      required: true
+    foreign_key_to: books
+    storage:
+      kind: standard
+      storage_type: uuid
+      not_null: true
+      index: standard
+      on_delete: cascade
+  - name: member_id
+    description: The member who wrote the review.
+    schema:
+      kind: string
+      format: uuid
+      required: true
+    foreign_key_to: members
+    storage:
+      kind: standard
+      storage_type: uuid
+      not_null: true
+      index: standard
+      on_delete: cascade
+  - name: rating
+    description: Star rating from 1 (poor) to 5 (excellent).
+    schema:
+      kind: number
+      required: true
+      integer: true
+      min: 1
+      max: 5
+    storage:
+      kind: standard
+      storage_type: integer
+      not_null: true
+      index: standard
+  - name: headline
+    description: A one-line summary of the review.
+    schema:
+      kind: string
+      required: true
+      maxLength: 120
+    storage:
+      kind: standard
+      storage_type: character varying
+      not_null: true
+  - name: body
+    description: The full review text, as Markdown.
+    schema:
+      kind: string
+      format: markdown
+    filterable: false
+    embeds: ["image/*", "application/pdf"]
+    storage:
+      kind: standard
+      storage_type: text
+  - name: recommended
+    description: Whether the member recommends the book.
+    schema:
+      kind: boolean
+      presentation: yes_no
+      default:
+        kind: boolean
+        value: true
+    storage:
+      kind: standard
+      storage_type: boolean
+      not_null: true
+      default_expr: "true"
+  - name: tags
+    description: Free-form descriptive tags (e.g. "page-turner", "slow-burn").
+    schema:
+      kind: array
+      items:
+        kind: string
+    editable: true
+    sortable: false
+    filterable: false
+    storage:
+      kind: standard
+      storage_type: jsonb

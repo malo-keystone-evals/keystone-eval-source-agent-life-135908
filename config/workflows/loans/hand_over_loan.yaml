@@ -1,0 +1,351 @@
+version: 3
+run_as: system
+trigger:
+  kind: manual
+  model_name: loans
+  status:
+    - requested
+description: "Hand a requested loan over: activate it and send the member a receipt, with a handled procedure for a missing member, a receipt hook that is down, and any other failure."
+nodes:
+  - id: load_book
+    title: Load the book being lent
+    action:
+      kind: fetch_model
+      model_name: books
+  - id: contact
+    title: Find the member's address
+    action:
+      kind: call_function
+      function: member_contact
+  - id: activate
+    title: Mark the loan active
+    action:
+      kind: transition_model
+      model_name: loans
+  - id: send_receipt
+    title: Email the member a receipt
+    action:
+      kind: api_call
+      method: post
+      path: /hooks/loan-receipt
+      input_schema:
+        kind: object
+        properties: {}
+      request_mode: per_item
+      external_api: notifications
+      credential:
+        kind: system
+        name: notifications_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: object("email", .context.email, "book", .context.book_title)
+            to: ".body"
+      output_schema:
+        kind: object
+        properties: {}
+      output_transform:
+        steps: []
+      response_format:
+        kind: json
+      output_mode: single
+      sends_sensitive_data: false
+  - id: alert_desk
+    title: Alert the desk to an orphaned loan
+    action:
+      kind: api_call
+      method: post
+      path: /hooks/desk-alert
+      input_schema:
+        kind: object
+        properties: {}
+      request_mode: per_item
+      external_api: notifications
+      credential:
+        kind: system
+        name: notifications_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: object("loan", .context.loan_id, "problem", .message)
+            to: ".body"
+      output_schema:
+        kind: object
+        properties: {}
+      output_transform:
+        steps: []
+      response_format:
+        kind: json
+      output_mode: single
+      sends_sensitive_data: false
+  - id: audit_orphan
+    title: Record the orphaned loan
+    action:
+      kind: api_call
+      method: post
+      path: /hooks/audit-log
+      input_schema:
+        kind: object
+        properties: {}
+      request_mode: per_item
+      external_api: notifications
+      credential:
+        kind: system
+        name: notifications_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: object("loan", .context.loan_id, "event", "orphaned_loan")
+            to: ".body"
+      output_schema:
+        kind: object
+        properties: {}
+      output_transform:
+        steps: []
+      response_format:
+        kind: json
+      output_mode: single
+      sends_sensitive_data: false
+  - id: which_outage
+    title: Slow, or down?
+    action:
+      kind: switch
+      cases:
+        - name: slow
+          when: '.name.eq("timeout")'
+  - id: queue_receipt
+    title: Queue the receipt to send later
+    action:
+      kind: api_call
+      method: post
+      path: /hooks/receipt-queue
+      input_schema:
+        kind: object
+        properties: {}
+      request_mode: per_item
+      external_api: notifications
+      credential:
+        kind: system
+        name: notifications_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: object("loan", .context.loan_id, "email", .context.email)
+            to: ".body"
+      output_schema:
+        kind: object
+        properties: {}
+      # An Item of its own, so the Item Context rides on to the log.
+      output_transform:
+        steps:
+          - kind: copy
+            from: '"queued"'
+            to: .outcome
+      response_format:
+        kind: json
+      output_mode: single
+      sends_sensitive_data: false
+  - id: page_outage
+    title: Page on call, receipts are down
+    action:
+      kind: api_call
+      method: post
+      path: /hooks/page-ops
+      input_schema:
+        kind: object
+        properties: {}
+      request_mode: per_item
+      external_api: notifications
+      credential:
+        kind: system
+        name: notifications_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: object("service", "receipts", "detail", .message)
+            to: ".body"
+      output_schema:
+        kind: object
+        properties: {}
+      # An Item of its own, so the Item Context rides on to the log.
+      output_transform:
+        steps:
+          - kind: copy
+            from: '"paged"'
+            to: .outcome
+      response_format:
+        kind: json
+      output_mode: single
+      sends_sensitive_data: false
+  - id: log_outage
+    title: Log the receipt failure
+    action:
+      kind: api_call
+      method: post
+      path: /hooks/audit-log
+      input_schema:
+        kind: object
+        properties: {}
+      request_mode: per_item
+      external_api: notifications
+      credential:
+        kind: system
+        name: notifications_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: object("loan", .context.loan_id, "event", .context.failure)
+            to: ".body"
+      output_schema:
+        kind: object
+        properties: {}
+      output_transform:
+        steps: []
+      response_format:
+        kind: json
+      output_mode: single
+      sends_sensitive_data: false
+  - id: classify_failure
+    title: Refused, or broken?
+    action:
+      kind: switch
+      cases:
+        - name: refused
+          when: '.name.eq("validation_failed")'
+  - id: tell_member
+    title: Tell the member why not
+    action:
+      kind: api_call
+      method: post
+      path: /hooks/loan-refused
+      input_schema:
+        kind: object
+        properties: {}
+      request_mode: per_item
+      external_api: notifications
+      credential:
+        kind: system
+        name: notifications_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: object("loan", .context.loan_id, "reason", .message)
+            to: ".body"
+      output_schema:
+        kind: object
+        properties: {}
+      output_transform:
+        steps: []
+      response_format:
+        kind: json
+      output_mode: single
+      sends_sensitive_data: false
+  - id: page_failure
+    title: Page on call with the failure
+    action:
+      kind: api_call
+      method: post
+      path: /hooks/page-ops
+      input_schema:
+        kind: object
+        properties: {}
+      request_mode: per_item
+      external_api: notifications
+      credential:
+        kind: system
+        name: notifications_main
+      input_transform:
+        steps:
+          - kind: copy
+            from: object("service", "hand_over_loan", "error", .name, "detail", .message)
+            to: ".body"
+      output_schema:
+        kind: object
+        properties: {}
+      output_transform:
+        steps: []
+      response_format:
+        kind: json
+      output_mode: single
+      sends_sensitive_data: false
+connections:
+  - from_id: entry
+    to_id: load_book
+    transform:
+      steps:
+        - kind: copy
+          from: ".book_id"
+          to: ".id"
+        - kind: copy
+          from: ".id"
+          to: ".context.loan_id"
+        - kind: copy
+          from: ".member_id"
+          to: ".context.member_id"
+  - from_id: load_book
+    to_id: contact
+    transform:
+      steps:
+        - kind: copy
+          from: ".book.title"
+          to: ".context.book_title"
+        - kind: copy
+          from: ".context.member_id"
+          to: ".member_id"
+  - from_id: contact
+    to_id: activate
+    transform:
+      steps:
+        - kind: copy
+          from: ".email"
+          to: ".context.email"
+        - kind: copy
+          from: ".context.loan_id"
+          to: ".id"
+        - kind: copy
+          from: '"active"'
+          to: ".status"
+  - from_id: activate
+    to_id: send_receipt
+  - from_id: alert_desk
+    to_id: audit_orphan
+  # The log comes after a hook whose reply replaces the Item, so the failure's
+  # name rides in the Item Context to reach it.
+  - from_id: which_outage
+    to_id: queue_receipt
+    case: slow
+    transform:
+      steps:
+        - kind: copy
+          from: .name
+          to: .context.failure
+  - from_id: which_outage
+    to_id: page_outage
+    case: else
+    transform:
+      steps:
+        - kind: copy
+          from: .name
+          to: .context.failure
+        - kind: copy
+          from: .message
+          to: .message
+  - from_id: queue_receipt
+    to_id: log_outage
+  - from_id: page_outage
+    to_id: log_outage
+  - from_id: classify_failure
+    to_id: tell_member
+    case: refused
+  - from_id: classify_failure
+    to_id: page_failure
+    case: else
+on_error:
+  - errors:
+      - member_missing
+    to: alert_desk
+  - errors:
+      - http_5xx
+      - timeout
+    to: which_outage
+  - to: classify_failure

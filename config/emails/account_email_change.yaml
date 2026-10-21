@@ -1,0 +1,56 @@
+# A project's own [[Email Template]] — the confirmation Athenaeum sends when an
+# administrator moves somebody's account onto a different address.
+#
+# **Why the framework's `email_change` template is not what this workflow
+# sends.** That one is the [[System Email]] behind the *self-service* route:
+# the request endpoint holds a token and the template composes the link around
+# it, which is what lets a project point its own landing page at the same
+# token. A `change_user_email` node has already composed the link — it is
+# minted with the deployment's own address, armed `password`, and masked in the
+# trace — so what this template takes is the whole URL, the way the shipped
+# `invite` template beside it takes `accept_url`. A file named
+# `email_change.yaml` here would override the framework's wholesale and break
+# the self-service half; this is a new email the project owns.
+#
+# The copy is written for a reader who did not ask for this: nobody signed in
+# and requested it, an administrator did. So it says what happened, what the
+# link does, and what to do if it was not expected — and it names no old
+# address, because whoever reads this has not proved they are entitled to know
+# what account is moving.
+version: 1
+name: account_email_change
+description: Tells someone an administrator moved an Athenaeum account to their address, and asks them to confirm it
+
+subject: Confirm your new {$app_name} email address
+
+# What the sending side has to hand over: the link, and only the link.
+# `{$app_name}` is an Easel environment binding an email surface reads from
+# [[Branding]], so the project's name is not the workflow's to supply.
+params:
+  kind: object
+  required: true
+  properties:
+    change_url:
+      kind: string
+      required: true
+      description: >-
+        The confirmation link the `change_user_email` node minted. Whoever
+        opens it moves the account's sign-in address to this one, so it is a
+        credential and never a value to log.
+
+blocks:
+  - kind: hero
+    heading: Confirm your new email address
+    body: An {$app_name} account is being moved to this address.
+
+  - kind: section
+    body: |
+      An administrator asked to use this address for a member's {$app_name}
+      account. Confirming it makes this address the one they sign in with.
+
+      The link below works for seven days. If you did not expect this email,
+      ignore it — nothing changes until the link is opened.
+
+  - kind: button
+    label: Confirm this address
+    url: "{.change_url}"

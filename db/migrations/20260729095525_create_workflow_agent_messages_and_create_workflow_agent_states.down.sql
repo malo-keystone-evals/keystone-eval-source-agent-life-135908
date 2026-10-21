@@ -1,0 +1,13 @@
+ALTER TABLE workflow_agent_messages DROP CONSTRAINT IF EXISTS workflow_agent_messages__fk_141k639kh6z;
+ALTER TABLE workflow_agent_messages DROP CONSTRAINT IF EXISTS workflow_agent_messages__fk_19x89djdd01;
+ALTER TABLE workflow_agent_states DROP CONSTRAINT IF EXISTS workflow_agent_states__fk_qu66hmfi9m;
+DROP INDEX IF EXISTS workflow_agent_messages__idx_nrcbxny9wa;
+DROP INDEX IF EXISTS workflow_agent_messages__idx_195v08otirn;
+DROP INDEX IF EXISTS workflow_agent_messages__idx_1ax0wyt9cd;
+DROP INDEX IF EXISTS workflow_agent_messages__idx_1izisr8bbl8;
+DROP INDEX IF EXISTS workflow_agent_states__idx_nrcbxny9wa;
+DROP INDEX IF EXISTS workflow_agent_states__idx_1ax0wyt9cd;
+DROP INDEX IF EXISTS workflow_agent_states__idx_s1gk7xkfhp;
+DROP INDEX IF EXISTS workflow_agent_states__idx_27jn3mlvq0b;
+DROP TABLE workflow_agent_messages;
+DROP TABLE workflow_agent_states;

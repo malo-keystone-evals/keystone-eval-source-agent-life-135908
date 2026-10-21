@@ -1,0 +1,55 @@
+nodes:
+  authors:
+    x: 1200.0
+    "y": 120.0
+  books:
+    x: 930.0
+    "y": 120.0
+  clubs:
+    x: 660.0
+    "y": 120.0
+  credentials:
+    x: 120.0
+    "y": 600.0
+  events:
+    x: 390.0
+    "y": 120.0
+  loans:
+    x: 1230.0
+    "y": 360.0
+  members:
+    x: 930.0
+    "y": 540.0
+  recurring_tick_claims:
+    x: 120.0
+    "y": 810.0
+  reviews:
+    x: 660.0
+    "y": 330.0
+  sessions:
+    x: 930.0
+    "y": 750.0
+  share_tokens:
+    x: 120.0
+    "y": 1020.0
+  user_auth_tokens:
+    x: 930.0
+    "y": 960.0
+  users:
+    x: 450.0
+    "y": 750.0
+  workflow_errors:
+    x: 120.0
+    "y": 1230.0
+  workflow_events:
+    x: 930.0
+    "y": 1200.0
+  workflow_runs:
+    x: 660.0
+    "y": 1230.0
+  workflow_schedules:
+    x: 390.0
+    "y": 1320.0
+  workflow_steps:
+    x: 390.0
+    "y": 1530.0

@@ -1,0 +1,43 @@
+# The form an [[Onboarding Step]] renders. A `workflow`-subject modal like
+# `invite_user`, and an ordinary one in every respect — what makes it an
+# onboarding form is that `config/onboarding/member.yaml` names it, not
+# anything written here — no page names it, and the Focus Layout is what opens
+# it for the user being onboarded.
+#
+# It does still reach the users listing, and that is worth knowing rather than
+# hiding: that page declares `record_actions.modals: ["*"]`, which resolves to
+# every modal whose subject is a `users` record — a workflow subject counts, by
+# its trigger's model. So an administrator sees "Join the library" beside a
+# selected user and can enrol them by hand, which the policies already allow
+# (`admin` holds every policy on every row, `profile` among them). A project
+# that wants an onboarding modal kept off its listings names its modals
+# explicitly there instead of reaching for the wildcard.
+#
+# `form` content, because that is all an onboarding step accepts for now
+# (ADR-0110 D3): the Focus Layout draws the blocks itself and has no chrome for
+# a wizard's steps or a tabbed form's tabs. The path keys are bare — this
+# modal's data is the workflow's `user_input` object, whose shape is the
+# trigger's `user_input_schema` and nothing else.
+version: 3
+name: join_library
+title: Join the library
+icon_id: fa/solid/address-card
+content:
+  kind: form
+  blocks:
+    - kind: markdown
+      content: |
+        Welcome to **Athenaeum**. Setting up your membership takes one form —
+        after this you can browse the catalogue, borrow books and join a
+        reading club.
+    - kind: text_field
+      label: Display name
+      path_key: display_name
+    - kind: select_field
+      label: Membership tier
+      path_key: membership_tier
+      itemset_name: membership_tiers
+subject:
+  kind: workflow
+  workflow_path: users/join_library
+  workflow_name: join_library

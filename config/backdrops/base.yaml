@@ -1,0 +1,10 @@
+description: base state with an admin user and records
+records:
+  users:
+    - $alias: admin
+      fields:
+        first_name: Admin
+        last_name: User
+        status: active
+        email: admin@example.com
+        admin_role: true

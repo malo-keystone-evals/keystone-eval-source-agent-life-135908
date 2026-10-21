@@ -1,0 +1,10 @@
+version: 1
+description: >-
+  What the ISBN audit's box needs beyond the framework image: an ISBN parser, so
+  the workflow can validate and normalise a catalogue ISBN before spending a
+  publisher API call on it.
+# `python-stdnum` knows the check-digit rules for ISBN-10 and ISBN-13 and the
+# conversion between them. Doing that by hand is thirty lines of arithmetic that
+# is wrong the first time someone hits an `X` check digit.
+pip:
+  - python-stdnum

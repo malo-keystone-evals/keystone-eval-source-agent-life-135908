@@ -1,0 +1,42 @@
+version: 3
+run_as: system
+trigger:
+  kind: on_create
+  model_name: books
+  statuses:
+    - draft
+description: Derive a URL slug from a new book's title using the slugify plugin.
+nodes:
+  - id: make_slug
+    title: Slugify the title
+    action:
+      kind: plugin
+      plugin_name: slugify
+  - id: save_slug
+    title: Write the slug back onto the book
+    action:
+      kind: update_model
+      model_name: books
+connections:
+  - from_id: entry
+    to_id: make_slug
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: ".title"
+          to: ".title"
+        - kind: copy
+          from: ".id"
+          to: ".record_id"
+  - from_id: make_slug
+    to_id: save_slug
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: ".record_id"
+          to: ".id"
+        - kind: copy
+          from: ".slug"
+          to: ".properties.slug"

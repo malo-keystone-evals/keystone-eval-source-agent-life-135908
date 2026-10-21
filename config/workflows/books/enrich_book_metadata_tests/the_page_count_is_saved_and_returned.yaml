@@ -1,0 +1,41 @@
+# The happy path: the switch lets a book with an ISBN through, ISBNdb answers,
+# the page count is saved and returned.
+version: 3
+name: the_page_count_is_saved_and_returned
+description: A book with an ISBN gets its page count from ISBNdb, saved and returned with a 200.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: admin@example.com
+    authors:
+      - $alias: a1
+        fields:
+          name: Ursula K. Le Guin
+    books:
+      - $alias: b1
+        fields:
+          title: The Dispossessed
+          author_id: a1
+          status: published
+          isbn: 978-0061054884
+external:
+  lookup:
+    book:
+      pages: 387
+trigger:
+  kind: endpoint
+  record: b1
+  input: {}
+expect:
+  response:
+    code: 200
+    body:
+      page_count: 387
+  world:
+    updated:
+      books:
+        - record: b1
+          changes:
+            page_count: 387

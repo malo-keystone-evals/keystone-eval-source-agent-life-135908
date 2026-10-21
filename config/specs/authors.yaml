@@ -1,0 +1,131 @@
+# The anchor of the catalogue's FK web: every book points back to one author.
+# Carries a `count` aggregate (book_count) so an author row always knows how many
+# books it has without a query, and an enum `nationality` rendered through the
+# `author_nationalities` itemset.
+version: 4
+initial_status: active
+name: authors
+singular_name: author
+display_name: Author
+description: >-
+  A person who writes books. The anchor model of the FK relation exercised
+  throughout this example: every book points back to one author.
+icon_id: fa/solid/user-pen
+nav_section: library
+identity:
+  title: name
+statuses:
+  - name: active
+  - name: retired
+policies:
+  - name: admin
+    description: Full control over every author.
+    permissions:
+      - kind: view
+        properties:
+          - "*"
+        status:
+          - active
+          - retired
+        includes:
+          - "*"
+        lifecycle: true
+      - kind: create
+        properties:
+          - name
+          - bio
+          - website
+          - nationality
+        status:
+          - active
+        required_properties:
+          - name
+      - kind: update
+        properties:
+          - name
+          - bio
+          - website
+          - nationality
+        status:
+          - active
+      - kind: transition
+        from:
+          - active
+        to:
+          - retired
+      - kind: transition
+        from:
+          - retired
+        to:
+          - active
+  - name: catalogue
+    description: Browse authors in the catalogue.
+    permissions:
+      - kind: view
+        properties:
+          - name
+          - bio
+          - website
+          - nationality
+          - book_count
+        status:
+          - active
+          - retired
+properties:
+  - name: name
+    description: The author's full name.
+    schema:
+      kind: string
+      required: true
+    storage:
+      kind: standard
+      storage_type: character varying
+      not_null: true
+      index: standard
+  - name: bio
+    description: A short biography.
+    schema:
+      kind: string
+    filterable: false
+    storage:
+      kind: standard
+      storage_type: text
+  - name: website
+    description: The author's homepage.
+    schema:
+      kind: string
+      format: url
+    filterable: false
+    storage:
+      kind: standard
+      storage_type: character varying
+  - name: nationality
+    description: The author's nationality.
+    schema:
+      kind: string
+      enum:
+        - american
+        - british
+        - australian
+        - canadian
+        - irish
+        - nigerian
+        - japanese
+        - other
+    itemset: author_nationalities
+    storage:
+      kind: standard
+      storage_type: character varying
+      index: standard
+  - name: book_count
+    description: How many books this author has in the catalogue, rolled up from books.
+    schema:
+      kind: number
+      integer: true
+    editable: false
+    storage:
+      kind: aggregate
+      method: count
+      source:
+        model: books
+        foreign_key: author_id

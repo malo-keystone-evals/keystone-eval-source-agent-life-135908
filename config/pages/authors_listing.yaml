@@ -1,0 +1,42 @@
+version: 4
+name: authors_listing
+title: Authors
+icon_id: fa/solid/user-pen
+route:
+  section: library
+  path: /authors
+  roles:
+    - admin
+    - librarian
+    - patron
+  order: 2
+content:
+  kind: listing
+  model_name: authors
+  views:
+    - kind: table
+      default_sort:
+        column: name
+        direction: asc
+      columns:
+        book_count:
+          label: Books
+  page_actions:
+    add_modal: edit_author
+  # The one place the author record's affordances are configured: they are
+  # what a row of this listing offers, and — because `author_page` names this
+  # listing as its `parent_page` — what the record page offers too. A block on
+  # the record page beside it would be ignored.
+  record_actions:
+    # ADR 0016's Action Set Reference over the FK relations that touch this
+    # model: `["*"]` offers every one the reader's nav roles can reach, as the
+    # panel's Related links and the row menu's Related links submenu. Absent,
+    # the block offers none — which is the default, and why every page here
+    # names it rather than leaving the affordance to chance.
+    related_links:
+      - "*"
+    edit_modal: edit_author
+    record_page: author_page
+    show_status: true
+    modals:
+      - "*"

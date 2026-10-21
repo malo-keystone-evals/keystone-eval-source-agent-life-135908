@@ -1,0 +1,7 @@
+components:
+  - keystone
+base:
+  name: keystone-eval-source-agent-life-135908
+environments:
+  production:
+    context: rehearsal-cluster

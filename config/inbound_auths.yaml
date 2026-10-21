@@ -1,0 +1,18 @@
+# Inbound Auths (ADR-0140) — how callers with no Keystone identity prove
+# themselves to an endpoint workflow. An endpoint names one as
+# `auth: { inbound: <name> }`; the call then runs with no user, as system.
+#
+# A webhook sender signs the raw request body with a shared secret, GitHub-style:
+# `X-Catalogue-Signature: sha256=<hex HMAC-SHA256>`. The secret is set on the
+# admin credentials page's Inbound Auths tab, never committed.
+- name: catalogue_webhook
+  scheme: hmac
+  header: X-Catalogue-Signature
+  prefix: "sha256="
+# A machine caller presents a key in a header. The key is the environment's:
+# set CATALOGUE_SYNC_KEY where the server runs.
+- name: catalogue_sync
+  scheme: api_key
+  header: X-Catalogue-Key
+  source: environment
+  env: CATALOGUE_SYNC_KEY

@@ -1,0 +1,47 @@
+# Exercises the on_create → fetch_model → api_call chain with a canned External
+# Response standing in for the webhook, and asserts on the recorded External Call
+# (its request body), including the rating threaded through `context`.
+version: 3
+name: publishing_a_review_posts_a_notification
+description: Creating a published review posts a notification carrying the book title and rating.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: carol@example.com
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+    members:
+      - $alias: m1
+        fields:
+          display_name: Carol
+          user_id: u1
+    reviews:
+      - $alias: r1
+        fields:
+          book_id: b1
+          member_id: m1
+          rating: 5
+          headline: A classic
+          status: published
+external:
+  notify: {}
+trigger:
+  kind: on_create
+  record: r1
+expect:
+  calls:
+    notify:
+      - body:
+          event: new_review
+          book: Dune
+          rating: 5
+          tone: praise

@@ -1,0 +1,72 @@
+version: 3
+description: >-
+  Classify a review by its star rating: four or five stars is praise, one or
+  two a complaint, three neutral. A rating outside one to five is refused.
+icon_id: fa/regular/star
+inputs:
+  kind: object
+  properties:
+    rating:
+      kind: number
+      required: true
+outputs:
+  kind: object
+  properties:
+    tone:
+      kind: string
+      required: true
+errors:
+  - name: rating_out_of_range
+    description: The rating is not between 1 and 5.
+nodes:
+  - id: classify
+    title: Which tone
+    action:
+      kind: switch
+      cases:
+        - name: out_of_range
+          when: .rating.lt(1).or(.rating.gt(5))
+        - name: praise
+          when: .rating.gt(3)
+        - name: complaint
+          when: .rating.lt(3)
+  - id: refuse
+    title: Refuse an impossible rating
+    action:
+      kind: fail
+      name: rating_out_of_range
+      message: '"a rating is between 1 and 5"'
+  - id: answer
+    title: Answer with the tone
+    action:
+      kind: return
+connections:
+  - from_id: entry
+    to_id: classify
+  - from_id: classify
+    to_id: refuse
+    case: out_of_range
+  - from_id: classify
+    to_id: answer
+    case: praise
+    transform:
+      steps:
+        - kind: copy
+          from: '"praise"'
+          to: .tone
+  - from_id: classify
+    to_id: answer
+    case: complaint
+    transform:
+      steps:
+        - kind: copy
+          from: '"complaint"'
+          to: .tone
+  - from_id: classify
+    to_id: answer
+    case: else
+    transform:
+      steps:
+        - kind: copy
+          from: '"neutral"'
+          to: .tone

@@ -1,0 +1,130 @@
+# A custom endpoint (ADR-0049): `GET /api/endpoints/weather?latitude=..&longitude=..`
+#
+# It fetches the current temperature and wind from the public Open-Meteo API,
+# does a small computation (Celsius → Fahrenheit, and a naive "is it warm?"
+# check), and responds with the combined result. Unanchored — it targets no
+# record, so any authenticated principal may call it (no `auth` block).
+#
+# The page plugin at plugins/page/weather calls this via
+# `keystone.callEndpoint({ name: "weather", method: "get", input: { latitude, longitude } })`.
+version: 3
+run_as: system
+trigger:
+  kind: endpoint
+  method: get
+  path: weather
+  # GET input arrives as query parameters, so the fields must be flat scalars.
+  input_schema:
+    kind: object
+    properties:
+      latitude:
+        kind: number
+        required: true
+      longitude:
+        kind: number
+        required: true
+  # The response contract: one entry per HTTP status the endpoint can answer
+  # with. Every Respond node's status must match one of these codes.
+  returns:
+    - code: 200
+      body:
+        kind: object
+        properties:
+          temperature_c:
+            kind: number
+          temperature_f:
+            kind: number
+          wind_kph:
+            kind: number
+          is_warm:
+            kind: boolean
+  timeout_seconds: 15
+
+nodes:
+  - id: fetch_weather
+    title: Fetch current conditions from Open-Meteo
+    action:
+      kind: api_call
+      method: get
+      # This call is unauthenticated, so no credential supplies a base URL —
+      # the `open_meteo` External API's `default_base_url`
+      # (config/external_apis.yaml) is what this path hangs off, and the same
+      # entry's domain whitelist gates the composed URL.
+      path: /v1/forecast
+      external_api: open_meteo
+      request_mode: per_item
+      input_schema:
+        kind: object
+        properties:
+          latitude:
+            kind: number
+          longitude:
+            kind: number
+      input_transform:
+        steps:
+          - kind: copy
+            from: ".latitude"
+            to: ".query_params.latitude"
+          - kind: copy
+            from: ".longitude"
+            to: ".query_params.longitude"
+          - kind: copy
+            from: '"temperature_2m,wind_speed_10m"'
+            to: ".query_params.current"
+      output_schema:
+        kind: object
+        properties:
+          temperature_c:
+            kind: number
+          wind_kph:
+            kind: number
+      output_transform:
+        steps:
+          - kind: copy
+            from: ".current.temperature_2m"
+            to: ".temperature_c"
+          - kind: copy
+            from: ".current.wind_speed_10m"
+            to: ".wind_kph"
+
+  - id: respond_ok
+    title: Return the computed conditions
+    action:
+      kind: respond
+      status: 200
+
+connections:
+  # The entry Item is `{ input: { latitude, longitude } }`; hand the coordinates
+  # to the api_call node in the shape its input_schema declares.
+  - from_id: entry
+    to_id: fetch_weather
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: ".input.latitude"
+          to: ".latitude"
+        - kind: copy
+          from: ".input.longitude"
+          to: ".longitude"
+
+  # The dummy computation: derive Fahrenheit and a warm/cool flag from the
+  # fetched Celsius reading, then pass the whole item to the Respond node — its
+  # input Item becomes the 200 response body.
+  - from_id: fetch_weather
+    to_id: respond_ok
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: ".temperature_c"
+          to: ".temperature_c"
+        - kind: copy
+          from: ".wind_kph"
+          to: ".wind_kph"
+        - kind: copy
+          from: ".temperature_c.times(9).divide_by(5).plus(32)"
+          to: ".temperature_f"
+        - kind: copy
+          from: ".temperature_c.gte(20)"
+          to: ".is_warm"

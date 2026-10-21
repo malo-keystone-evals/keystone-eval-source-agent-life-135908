@@ -1,0 +1,249 @@
+description: A seeded library — six users across every role, an author, books, members and a loan.
+
+# Files staged before the records, so a record below can name one by alias in a
+# File-Reference Property (ADR-0093). Paths are relative to this folder; size
+# and SHA-256 are measured from the content when the file is seeded, never
+# declared here.
+files:
+  # Seeded file content (D8): an alias, a path relative to this folder, and the
+  # seeder computes the size and SHA-256. A record names the ALIAS in its
+  # File-Reference Property and the seeder resolves it to the inserted file's
+  # id — which is what lets a fixture reference an image whose id nobody can
+  # know in advance.
+  #
+  # The art is abstract rather than the real jackets: a checked-in example
+  # project is exactly where somebody else's copyright matters. Each is visibly
+  # different from the others, so a rendered worksheet shows at a glance that
+  # the right image reached the right record.
+  - $alias: dune_cover
+    path: files/dune-cover.png
+  - $alias: messiah_cover
+    path: files/messiah-cover.png
+  - $alias: earthsea_cover
+    path: files/earthsea-cover.png
+  - $alias: dispossessed_cover
+    path: files/dispossessed-cover.png
+  # Club logos, printed in the header of a club's event worksheets.
+  - $alias: dune_readers_logo
+    path: files/dune-readers-logo.png
+  - $alias: earthsea_circle_logo
+    path: files/earthsea-circle-logo.png
+
+records:
+  users:
+    - $alias: admin_user
+      fields:
+        email: admin@example.com
+        first_name: Ada
+        last_name: Admin
+        admin_role: true
+        password_digest: $2b$12$Zn.qn4N1aIa/QFE.dpBmtunNxTB7tDyVvJNWUEHM9TYtf8PJK8xaG
+        status: active
+    - $alias: librarian_user
+      fields:
+        email: librarian@example.com
+        first_name: Liam
+        last_name: Librarian
+        librarian_role: true
+        password_digest: $2b$12$Zn.qn4N1aIa/QFE.dpBmtunNxTB7tDyVvJNWUEHM9TYtf8PJK8xaG
+        status: active
+    - $alias: patron_user
+      fields:
+        email: patron@example.com
+        first_name: Pat
+        last_name: Patron
+        patron_role: true
+        password_digest: $2b$12$Zn.qn4N1aIa/QFE.dpBmtunNxTB7tDyVvJNWUEHM9TYtf8PJK8xaG
+        status: active
+    # The filtered-grant demonstrator, and deliberately the ONLY user carrying
+    # exactly one role: `circulation` reaches the Catalogue Desk's threads and
+    # the featured books, and a second role here would mask which of the two
+    # windows any given row came through. It reads that desk's conversations
+    # and cannot send to them — sending is the endpoint's own `auth.roles`.
+    - $alias: circulation_user
+      fields:
+        email: circulation@example.com
+        first_name: Cleo
+        last_name: Circulation
+        circulation_role: true
+        password_digest: $2b$12$Zn.qn4N1aIa/QFE.dpBmtunNxTB7tDyVvJNWUEHM9TYtf8PJK8xaG
+        status: active
+    - $alias: alice_user
+      fields:
+        email: alice@example.com
+        first_name: Alice
+        last_name: Reader
+        patron_role: true
+        password_digest: $2b$12$Zn.qn4N1aIa/QFE.dpBmtunNxTB7tDyVvJNWUEHM9TYtf8PJK8xaG
+        status: active
+    - $alias: bob_user
+      fields:
+        email: bob@example.com
+        first_name: Bob
+        last_name: Bookworm
+        patron_role: true
+        password_digest: $2b$12$Zn.qn4N1aIa/QFE.dpBmtunNxTB7tDyVvJNWUEHM9TYtf8PJK8xaG
+  authors:
+    - $alias: herbert
+      fields:
+        name: Frank Herbert
+        nationality: american
+    - $alias: leguin
+      fields:
+        name: Ursula K. Le Guin
+        nationality: american
+    - $alias: brian_herbert
+      fields:
+        name: Brian Herbert
+        nationality: american
+    - $alias: anderson
+      fields:
+        name: Kevin J. Anderson
+        nationality: american
+  # `summary` and `published_on` are seeded on the curated books so the listing's
+  # Cards View has something to draw: the card's summary line and its
+  # `published_on` default sort. `messiah` gets a date but no summary — its
+  # summary is what books/curate_book distils on the first boot after a seed
+  # (it is `draft`, which is what that workflow's on_create trigger matches).
+  books:
+    - $alias: dune
+      fields:
+        title: Dune
+        author_id: herbert
+        genre: science_fiction
+        summary: >-
+          Paul Atreides inherits a desert world whose spice makes it the most
+          valuable — and most treacherous — planet in the empire.
+        published_on: "1965-08-01"
+        status: published
+        # On the front desk's display shelf, which is what `circulation`'s
+        # filtered `catalogue` grant reaches. Earthsea below is published and
+        # NOT featured on purpose: the pair is what shows the filter working
+        # rather than the policy's status list.
+        featured: true
+        # The alias of the seeded file above. One book carries a cover on
+        # purpose: it makes a File-Reference Property visible in the running app
+        # without a manual upload, and it is the image a rendered document
+        # embeds.
+        cover_image_id: dune_cover
+    - $alias: messiah
+      fields:
+        title: Dune Messiah
+        author_id: herbert
+        genre: science_fiction
+        published_on: "1969-07-01"
+        status: draft
+        cover_image_id: messiah_cover
+    - $alias: earthsea
+      fields:
+        title: A Wizard of Earthsea
+        author_id: leguin
+        genre: fantasy
+        summary: >-
+          A goatherd's boy with a talent for magic looses a shadow on the world
+          and must sail the archipelago to name it.
+        published_on: "1968-11-01"
+        status: published
+        cover_image_id: earthsea_cover
+    # A second draft, left genre-less on purpose. Seeding it DOES drive the
+    # curate demo: backdrop records are inserted through the model store, so
+    # the per-table trigger fires and books/curate_book runs on the first boot
+    # after a seed (it needs the `open_ai_api` credential set, or the run ends
+    # in a credential error). Kept as a realistic un-curated catalogue entry.
+    - $alias: dispossessed
+      fields:
+        title: The Dispossessed
+        author_id: leguin
+        status: draft
+        cover_image_id: dispossessed_cover
+    # The array foreign key: `co_author_ids` names further authors by alias, so
+    # the listing, record page and related links show identities for a list.
+    # Frank Herbert is credited alongside for the universe the prequel is set in.
+    - $alias: house_atreides
+      fields:
+        title: "Dune: House Atreides"
+        author_id: brian_herbert
+        co_author_ids: [anderson, herbert]
+        genre: science_fiction
+        summary: >-
+          A generation before Dune, young Leto Atreides is sent to Ix as the
+          great houses manoeuvre for the spice.
+        published_on: "1999-09-01"
+        status: published
+  # AGENTIC THREADS DEMO (ADR-0067): two clubs with current books, ready for
+  # events/plan_club_session. The event below is `completed` and the workflow
+  # triggers on `scheduled`, so seeding stays quiet. To see the demo: schedule
+  # an event for a club (the per-club thread is created and planned), then
+  # schedule a *second* event for the same club — the planner reopens the same
+  # conversation and avoids the themes it already covered. Each club is its
+  # own thread.
+  clubs:
+    - $alias: dune_readers
+      fields:
+        name: Dune Readers
+        description: Working through the Dune saga one sandworm at a time.
+        current_book_id: dune
+        capacity: 12
+        meeting_format:
+          kind: in_person
+          location: Reading Room 2
+        status: active
+        logo_file_id: dune_readers_logo
+    - $alias: earthsea_circle
+      fields:
+        name: Earthsea Circle
+        description: Le Guin's archipelago, one island per month.
+        current_book_id: earthsea
+        capacity: 8
+        meeting_format:
+          kind: online
+          url: https://meet.example.com/earthsea
+        status: active
+        logo_file_id: earthsea_circle_logo
+  events:
+    # A past meeting, for realism. It does not fire the planner because the
+    # trigger wants `scheduled`, not because seeding skips triggers.
+    - $alias: dune_kickoff
+      fields:
+        club_id: dune_readers
+        title: "Kickoff: spice and sand"
+        starts_at: "2026-07-01T18:00:00Z"
+        capacity: 12
+        status: completed
+  # Both members carry a phone, which the members listing's `modal_actions`
+  # predicates want before a book is lent to them; only Alice holds a loan, so
+  # hers is the entry that stays enabled and Bob's is the one that greys out
+  # once the `last_loan` binding lands empty.
+  members:
+    - $alias: alice
+      fields:
+        display_name: Alice Reader
+        user_id: alice_user
+        membership_tier: gold
+        phone: "+61 400 111 222"
+    - $alias: bob
+      fields:
+        display_name: Bob Bookworm
+        user_id: bob_user
+        membership_tier: bronze
+        phone: "+61 400 333 444"
+  loans:
+    - $alias: alice_dune
+      fields:
+        book_id: dune
+        member_id: alice
+        due_on: "2026-08-01"
+        status: active
+  reviews:
+    - $alias: alice_dune_review
+      fields:
+        book_id: dune
+        member_id: alice
+        rating: 5
+        headline: A desert masterpiece
+        recommended: true
+        status: published
+    # AGENTIC DEMO (ADR-0063): reviews/moderate_review fires on_create, and the
+    # published review above does drive it on the first boot after a seed. No
+    # per-category fodder rows: one review is enough to show the chain, and the
+    # Write Review modal is the natural way to try the other categories.

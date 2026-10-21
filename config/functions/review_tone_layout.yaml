@@ -1,0 +1,13 @@
+nodes:
+  answer:
+    x: 660.0
+    'y': 330.0
+  classify:
+    x: 390.0
+    'y': 210.0
+  entry:
+    x: 120.0
+    'y': 210.0
+  refuse:
+    x: 660.0
+    'y': 120.0

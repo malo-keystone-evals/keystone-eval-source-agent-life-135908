@@ -1,0 +1,472 @@
+# EJECTED from the framework's canonical users System Spec (which documents this
+# as the supported path: copy, then add project-specific policies on top).
+#
+# Two policies are added on top, and both of them are about a name. The first is
+# `directory`. The framework ships `users` with a single `admin` policy, so out
+# of the box **nobody but an admin can read anyone else's name** — a query comes
+# back `{"data":[]}`, silently, rather than as an error. That is fine for a
+# users admin screen and wrong for anything that renders "who said this": the
+# Catalogue Desk (ADR-0071) is a conversation between colleagues whose whole
+# point is that someone reads it later, and "Colleague 1BFD" is not a colleague.
+#
+# `directory` is deliberately the narrowest thing that fixes it — view-only, two
+# name properties, no email, no create, no update. Granting the existing `admin`
+# policy instead would have handed every librarian the ability to create and
+# edit user accounts.
+#
+# **It is declared AFTER `admin`, and that order is load-bearing.** Permission
+# resolution takes the *first* policy whose permission matches the record's
+# status (`find_view` in `auth/policies.rs`), not the union of them — so for a
+# caller holding both (an admin does: its role grants `policies: ["*"]`), the
+# one listed first wins outright. Declared above `admin`, this policy silently
+# narrowed every admin's view of the users table to two columns.
+#
+# The second is `profile`, which closes the same gap from the other side:
+# nobody could *correct* their own account either — not even their own name. It
+# is granted to the `self` role, whose grant has no joins at all, and its
+# comment below says both what that means and why it is declared where it is.
+#
+# Stores user accounts. The framework reads this table directly with
+# hand-written sqlx during sign-in, recovery-code sign-in, OIDC user
+# lookup, and session establishment (see `authentication.rs` and
+# `session.rs` in keystone-server-rs). The properties shipped here are
+# the minimum keystone-server-rs queries against.
+#
+# Projects routinely extend this spec — copy this file into
+# `config/specs/users.yaml`, then add project-specific properties,
+# statuses, and policies on top. The eject path keeps the framework's
+# required shape in place; the Eject Contract validator (issue #749)
+# enforces it.
+#
+# Loaded as-is by both the Rust and TypeScript sides of the framework.
+version: 4
+initial_status: active
+name: users
+singular_name: user
+description: >-
+  User accounts. Carries the sign-in credentials and the per-user
+  identity the framework reads at authentication and session
+  establishment time.
+
+icon_id: fa/regular/users-rectangle
+nav_section: admin
+
+identity:
+  title: first_name
+  subtitles:
+    - last_name
+
+statuses:
+  - name: active
+  # Declared AFTER `active`, and that order is load-bearing: the *first* status
+  # is the Default Status, which is what the `status` column defaults to — and
+  # OIDC auto-provisioning (`create_new_user` in `authentication.rs`) inserts a
+  # user without naming one. Put `invited` first and every OIDC sign-in would
+  # provision an account the status gate then refuses entry to.
+  #
+  # An invited user is a real users row with no password set yet. Because
+  # `allowed_statuses` defaults to `["active"]` (ADR-0001), this status is
+  # refused sign-in by the Sign-in Status Gate with no further work — which is
+  # the whole point of it. Revoking an invitation is therefore an ordinary
+  # status change or delete; there is no separate revocation machinery.
+  - name: invited
+
+policies:
+  - name: admin
+    description: Full management of user accounts.
+    permissions:
+      - kind: view
+        status:
+          - "*"
+        properties:
+          - "*"
+      - kind: create
+        status:
+          - active
+          - invited
+        properties:
+          - "*"
+      # The deny entry the framework's own copy carries, adopted here because
+      # this spec is ejected and a policy is the project's own. Without it an
+      # admin token could move `email` through /keystone/mutate — an account
+      # taken over without anybody proving the new address. Retargeting an
+      # address is what the `change_user_email` node is for. The credential
+      # columns need no entry of their own: they are `editable: false`, and the
+      # write path drops a non-editable property (ADR-0097).
+      - kind: update
+        status:
+          - active
+          - invited
+        properties:
+          - "*"
+          - "!email"
+      - kind: workflow
+        workflows:
+          - change_user_email
+        status:
+          - active
+          - invited
+      - kind: workflow
+        workflows:
+          - invite_user
+        status:
+          - active
+
+  # A person's own account. Granted to the `self` local role in
+  # config/roles.yaml, whose one grant has an empty join chain — the framework's
+  # spelling of *self* (ADR-0090), reaching exactly the row whose id is the
+  # caller's and no other. What it adds over `directory` on that one row is the
+  # *write*: a person may correct their own name, which `directory` grants
+  # nobody.
+  #
+  # **It is declared between `admin` and `directory`, and both sides of that
+  # order are load-bearing** — the same first-match trap `directory` documents
+  # below, from both directions at once. A self grant is held by EVERY signed-in
+  # user (that is what a chain of no hops means), so every caller holds this
+  # policy on their own row, administrators included. Declared above `admin` it
+  # would silently narrow an administrator's view of their own account to three
+  # columns; declared below `directory` it would itself be shadowed on the
+  # holder's own row, and the role would appear to do nothing.
+  - name: profile
+    description: >-
+      A signed-in person's own account: an update of the names `directory`
+      shows everyone. No email, no credentials, no create, nobody else's row.
+    permissions:
+      # `active` rather than `*`, because sign-in's `allowed_statuses` is
+      # `[active]`: the row a caller holds this policy on is their own, and an
+      # account that cannot sign in is nobody's own.
+      #
+      # **`email` is deliberately NOT here, and adding it would widen far more
+      # than one row.** The filter/sort gate (`property_gate.rs`) asks whether a
+      # policy the caller holds on the *model* makes a column viewable — it is
+      # built before any row is read and has none to ask about. So a column
+      # named by a grant reaching a single row becomes filterable and sortable
+      # across the whole table: every signed-in user could filter `users` on
+      # `email` and read off which `directory` rows came back, which is the
+      # binary-search oracle that gate exists to close. A row-scoped grant may
+      # only name properties the caller could already view model-wide.
+      - kind: view
+        status:
+          - active
+        properties:
+          - first_name
+          - last_name
+      # The credential and token columns are absent for the reason `admin`
+      # denies itself them, and `email` with them for a second reason on top of
+      # the one above: an address is retargeted by the `change_user_email`
+      # workflow, which proves the new one before it moves (ADR-0087), not by a
+      # write. Nor is there a `create` — a person cannot create the row that
+      # makes them a person here, and a zero-hop grant confers none in any case.
+      - kind: update
+        status:
+          - active
+        properties:
+          - first_name
+          - last_name
+      # Dispatching the Onboarding Process's join workflow, and the reason a
+      # step needs no `record:` (ADR-0110 D4). The run has to be anchored on
+      # some record, the membership it is about does not exist yet, and the one
+      # row every signed-in caller certainly has is their own — so the anchor
+      # is `users` and the permission to dispatch lives here, on the zero-hop
+      # `self` grant. It reaches exactly one row per caller: their own.
+      #
+      # Note what this does NOT confer. The workflow runs `system`, so what it
+      # writes is the platform's act, not the caller's — this policy names no
+      # `create` and the caller holds none on `members`. The gate is on
+      # *starting* it, which is what a `kind: workflow` permission is for.
+      - kind: workflow
+        workflows:
+          - join_library
+        status:
+          - active
+
+  # A staff directory: enough to put a name on a message, and nothing else.
+  # Granted to librarian/circulation/patron in config/roles.yaml.
+  - name: directory
+    description: >-
+      Read-only access to other people's display names, for surfaces that show
+      who said or did something. No email, no credentials, no writes.
+    permissions:
+      - kind: view
+        status:
+          - "*"
+        properties:
+          - first_name
+          - last_name
+
+properties:
+  - name: first_name
+    description: The user's given name.
+    schema:
+      kind: string
+      required: true
+    storage:
+      kind: standard
+      storage_type: character varying
+      not_null: true
+
+  - name: last_name
+    description: The user's family name.
+    schema:
+      kind: string
+      required: true
+    storage:
+      kind: standard
+      storage_type: character varying
+      not_null: true
+
+  - name: email
+    description: >-
+      The user's email address. Used as the sign-in identifier and
+      looked up exactly during email/password and OIDC authentication.
+    schema:
+      kind: string
+      format: email
+      required: true
+    storage:
+      kind: standard
+      storage_type: character varying
+      not_null: true
+      index: unique
+
+  - name: password_digest
+    description: >-
+      bcrypt-hashed password. Null means the account has no password
+      set (e.g. OIDC-only, or invited but not yet activated).
+    schema:
+      kind: string
+      sensitivity: owned_secret
+    storage:
+      kind: standard
+      storage_type: character varying
+    # Minted and checked by the sign-in and password endpoints, which hash the
+    # plaintext themselves; a digest posted through generic mutate would be
+    # somebody's chosen string standing in for a password nobody can produce.
+    editable: false
+    # Never on the wire. The read path drops a non-viewable property before it
+    # reaches a response body, which a policy cannot do for itself: `users`
+    # grants `view` with `properties: ["*"]`, and a wildcard meaning "every
+    # property" means the credential columns too. A digest is offline-guessable,
+    # so the one place it belongs is the `verify_current_password` query that
+    # reads it by direct SQL — a path this flag does not touch.
+    viewable: false
+
+  - name: password_reset_token
+    description: >-
+      Server-generated single-use recovery code. Validated together
+      with `password_reset_sent_at` during the code sign-in flow.
+    schema:
+      kind: string
+      sensitivity: owned_secret
+    storage:
+      kind: standard
+      storage_type: character varying
+    editable: false
+    # A live code is a sign-in credential for the account it belongs to, so it
+    # leaves the server only in the email addressed to that account. See
+    # `password_digest` for why the policy's wildcard cannot be the gate.
+    viewable: false
+
+  - name: password_reset_sent_at
+    description: >-
+      Time the current `password_reset_token` was issued. The code
+      sign-in flow rejects tokens older than one hour.
+    schema:
+      kind: string
+      format: dateTime
+    storage:
+      kind: standard
+      storage_type: timestamp(6) without time zone
+    editable: false
+
+  - name: password_reset_attempts
+    description: >-
+      Wrong recovery codes guessed against the current
+      `password_reset_token`. The code sign-in flow clears the token on the
+      fifth failure — six digits is only a million codes, which is a great
+      many to guess and nothing at all to guess forever. A correct code
+      zeroes this, and so does minting a new one, so a locked-out user is
+      redirected back through the reset endpoint rather than stuck.
+    schema:
+      kind: number
+      integer: true
+      required: true
+    storage:
+      kind: standard
+      storage_type: integer
+      not_null: true
+      default_expr: "0"
+      infill: "0"
+    editable: false
+
+  - name: password_reset_sends
+    description: >-
+      Recovery codes sent on the day `password_reset_sent_at` names. The reset
+      endpoint refuses past a daily cap, because the sixty-second throttle
+      alone still permits 1,440 emails a day at an address the caller only has
+      to name. Read together with `password_reset_sent_at`, which is stamped by
+      the same statement — when that date is not today the count is stale and
+      the allowance is whole again, so no separate window column is needed.
+    schema:
+      kind: number
+      integer: true
+      required: true
+    storage:
+      kind: standard
+      storage_type: integer
+      not_null: true
+      default_expr: "0"
+      infill: "0"
+    editable: false
+
+  - name: invitation_token
+    description: >-
+      Server-generated opaque token naming the pending invitation. Handed to
+      the invitee as the accept link's only secret and validated together with
+      `invitation_sent_at`; cleared when the invitation is accepted, so a link
+      is good exactly once.
+    schema:
+      kind: string
+      sensitivity: owned_secret
+    storage:
+      kind: standard
+      storage_type: character varying
+      # The accept endpoints look a token up by this column and nothing else,
+      # and `/account/invitation.json` takes no credentials — so without an
+      # index every junk token an anonymous caller sends costs a scan of the
+      # whole table. Not `unique`: the column is null for everyone not currently
+      # invited, and leaning on Postgres treating nulls as distinct to keep
+      # "not invited" expressible is a subtlety this asks for and does not need.
+      index: standard
+    editable: false
+    # The accept link's only secret, so reading it is taking over the account it
+    # was minted for. See `password_digest` for why the policy's wildcard cannot
+    # be the gate.
+    viewable: false
+
+  - name: invitation_sent_at
+    description: >-
+      Time the current `invitation_token` was minted. The accept flow treats a
+      token older than seven days as expired. Where the project turned
+      `authentication.email_and_code` on, an expired link is not a dead end:
+      the ordinary password reset also counts as acceptance, so proving the
+      address and setting a password gets the account in whichever door it came
+      through. Where it did not, that door is shut as well, and an expired
+      invitation is one an administrator has to issue again.
+    schema:
+      kind: string
+      format: dateTime
+    storage:
+      kind: standard
+      storage_type: timestamp(6) without time zone
+    editable: false
+
+
+  - name: pending_email
+    description: >-
+      The address the account has asked to move to, held here until the link
+      mailed to it has been spent. The `email` column is the sign-in
+      identifier, so it does not move until the new address has proved itself
+      — which is what keeps the framework's invariant that every working
+      credential belongs to an address somebody demonstrably reads.
+    schema:
+      kind: string
+      format: email
+    storage:
+      kind: standard
+      storage_type: character varying
+    editable: false
+    # Its owner sees it through the current-user payload, which knows whose
+    # request it is answering; the generic query path does not, and `users`
+    # grants `view` with `properties: ["*"]`. See `password_digest` for why
+    # the policy's wildcard cannot be the gate.
+    viewable: false
+
+  - name: email_change_token
+    description: >-
+      Server-generated opaque token naming the pending email change. Handed to
+      the *new* address as the confirmation link's only secret and validated
+      together with `email_change_sent_at`; cleared when the change is spent,
+      so a link is good exactly once.
+    schema:
+      kind: string
+      sensitivity: owned_secret
+    storage:
+      kind: standard
+      storage_type: character varying
+      # The spend endpoints look a token up by this column and nothing else,
+      # and they take no credentials — so without an index every junk token an
+      # anonymous caller sends costs a scan of the whole table. Not `unique`,
+      # for the reason `invitation_token` gives.
+      index: standard
+    editable: false
+    # Spending this link moves the sign-in identifier, so reading it is taking
+    # the account over. See `password_digest`.
+    viewable: false
+
+  - name: email_change_sent_at
+    description: >-
+      Time the current `email_change_token` was minted. The spend treats a
+      token older than seven days as expired — the same constant the
+      invitation accept flow uses, so the check and the email's sentence
+      cannot drift apart.
+    schema:
+      kind: string
+      format: dateTime
+    storage:
+      kind: standard
+      storage_type: timestamp(6) without time zone
+    editable: false
+    # Half of the pending change, and the pending change is its owner's
+    # business alone. Reaches them through the current-user payload with
+    # `pending_email`.
+    viewable: false
+
+  - name: email_change_sends
+    description: >-
+      Confirmation links sent on the day `email_change_sent_at` names. The
+      request endpoint refuses past a daily cap, because the sixty-second
+      throttle alone still permits 1,440 emails a day at an address the caller
+      only has to name. Read together with `email_change_sent_at`, which is
+      stamped by the same statement — when that date is not today the count is
+      stale and the allowance is whole again, so no separate window column is
+      needed.
+    schema:
+      kind: number
+      integer: true
+      required: true
+    storage:
+      kind: standard
+      storage_type: integer
+      not_null: true
+      default_expr: "0"
+      infill: "0"
+    editable: false
+    # Bookkeeping for a change only its owner knows about, so it travels with
+    # the rest of the pending set rather than through the generic read path.
+    viewable: false
+
+  - name: onboarding
+    description: >-
+      The Onboarding Process this account is working through, by name, or null
+      for nothing to do (ADR-0110). The session payload carries it, and the
+      browser keeps an assigned user inside the onboarding Focus Layout until
+      every step's precondition holds, then asks the server to clear it.
+    schema:
+      kind: string
+    storage:
+      kind: standard
+      storage_type: character varying
+    # An ordinary viewable, editable property — the one column in the tail of
+    # this spec that is. Nothing here is a credential or half of a flow in
+    # flight: it is a plain string naming a process, and an operator assigning
+    # or resetting somebody's onboarding from the users listing is the whole of
+    # the administrative half. The wildcards in the `admin` policy's `view`,
+    # `create` and `update` already name it, so the `invite_user` node writes it
+    # through `properties` with nothing further built.
+    #
+    # A value naming a process the config no longer declares is not a lockout:
+    # the browser treats it as nothing to do and clears it (ADR-0110 D9). No
+    # validation can reach a plain string column, which is why that is the rule.
+disabled_sync_steps:
+  - backend-ruby

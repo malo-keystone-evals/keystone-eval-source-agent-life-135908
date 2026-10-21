@@ -1,0 +1,24 @@
+kind: workflow
+name: enrich
+# DEMO (ADR-0059): this plugin OPTS IN to seeing decrypted secrets
+# (`decrypts_sensitive_data: true`), so the engine hands it plaintext instead of
+# the `__ENCRYPTED__` placeholder. Because it derives a new value FROM the
+# secret, it must re-declare that output leaf `sensitivity: password` so the
+# taint continues downstream — forgetting to is the accepted plugin limitation.
+decrypts_sensitive_data: true
+input:
+  kind: object
+  required: true
+  properties:
+    webhook_secret:
+      kind: string
+      sensitivity: password
+      required: true
+output:
+  kind: object
+  required: true
+  properties:
+    token:
+      kind: string
+      sensitivity: password
+      required: true

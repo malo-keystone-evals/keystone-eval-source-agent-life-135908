@@ -1,0 +1,17 @@
+-- `workflow_thread_files` is retired. An agent's file is owned by the
+-- `chat_block` event that shows it (`workflow_ledger_events.file_upload_id`),
+-- so the join table that used to anchor it to a conversation has no spec behind
+-- it any more.
+--
+-- Hand-written rather than generated: `sync --cleanup` would drop this table,
+-- but in the same pass it also proposes dropping the compound index on
+-- `workflow_threads` that serves the conversation list, which is still wanted.
+-- A drop is worth spelling out anyway.
+--
+-- The rows themselves are not migrated anywhere. Each said "this file belongs to
+-- that thread", and the replacement fact lives on the event that renders the
+-- file — which the engine writes when the block settles, and which no historical
+-- join row can reconstruct (it names a thread, not an event). Any file anchored
+-- only by this table stays `attached` and keeps its bytes; what it loses is the
+-- route that signed it, which retired with the table.
+DROP TABLE IF EXISTS workflow_thread_files;

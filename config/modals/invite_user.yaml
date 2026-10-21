@@ -1,0 +1,66 @@
+# A `workflow`-subject modal: submitting it dispatches the users/invite_user
+# manual-trigger workflow, and whatever the form holds travels as that run's
+# `user_input`. It is carried on the users listing (`record_actions.modals`),
+# which is the only way a workflow is surfaced from a page.
+#
+# The path keys are **bare** — `email`, not `properties.email`. A record modal
+# edits a record and its data is shaped like one; this modal's data is the
+# workflow's `user_input` object, whose shape is the trigger's
+# `user_input_schema` and nothing else.
+#
+# Nothing here is validated against that schema: a workflow modal's form is
+# typed `any` client-side, because there is no published schema for a workflow
+# yet. So every field below is checked by the run rather than by the form — a
+# missing email is the `users` spec's `not null` refusing the insert, which the
+# node surfaces as `validation_failed`.
+version: 3
+name: invite_user
+title: Invite user
+icon_id: fa/solid/user-plus
+content:
+  kind: form
+  blocks:
+    - kind: markdown
+      content: |
+        Creates the account in **invited** and emails them a link that sets
+        their password. They cannot sign in until they have used it — the link
+        is good for seven days, and an expired one is recovered through the
+        ordinary password reset.
+    - kind: text_field
+      label: Email
+      path_key: email
+      format: email
+    - kind: side_by_side
+      primary:
+        kind: text_field
+        label: First name
+        path_key: first_name
+      secondary:
+        kind: text_field
+        label: Last name
+        path_key: last_name
+    # The role flags are the `<name>_role` columns roles.yaml drives, so ticking
+    # one here is the whole of granting it. `admin` is not offered: an
+    # administrator is made by editing the account afterwards.
+    - kind: group
+      name: roles
+      title: Access
+      blocks:
+        - kind: checkbox_field
+          label: Librarian — full control of the catalogue and circulation
+          path_key: librarian_role
+        - kind: checkbox_field
+          label: Patron — read-only access to the public catalogue
+          path_key: patron_role
+    # Which Onboarding Process the invitee is dropped into on their first
+    # sign-in — the name of a file under `config/onboarding/`, or blank for
+    # none. Typed rather than picked: an onboarding assignment is a plain string
+    # column, which is also why a name the config no longer declares is not a
+    # lockout (ADR-0110 D9).
+    - kind: text_field
+      label: Onboarding process
+      path_key: onboarding
+subject:
+  kind: workflow
+  workflow_path: users/invite_user
+  workflow_name: invite_user

@@ -1,0 +1,34 @@
+# A reusable helix object schema, referenced by `kind: ref, name: address` from
+# events.venue (stored as jsonb) and rendered read-only by the `venue_details`
+# data modal. Defining a shape once and pointing several config sites at it is
+# what config/schemas/ is for.
+kind: object
+properties:
+  line1:
+    kind: string
+    required: true
+    description: Street address, line 1.
+  line2:
+    kind: string
+    description: Street address, line 2 (optional).
+  city:
+    kind: string
+    required: true
+  state:
+    kind: string
+    enum:
+      - NSW
+      - VIC
+      - QLD
+      - SA
+      - WA
+      - TAS
+      - ACT
+      - NT
+  postcode:
+    kind: string
+  country:
+    kind: string
+    default:
+      kind: string
+      value: Australia

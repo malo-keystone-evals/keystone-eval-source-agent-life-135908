@@ -1,0 +1,44 @@
+# Test Case (ADR-0012): the recurring sweep transitions a past-due active loan.
+# The RAM engine runs the real workflow against seeded records — no database.
+# `now` is frozen so the connection filter `.due_on.lt(today())` is deterministic.
+version: 3
+name: past_due_loan_becomes_overdue
+description: An active loan whose due date has passed is transitioned to overdue.
+now: 2026-07-23T00:00:00Z
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+    members:
+      - $alias: m1
+        fields:
+          display_name: Alice
+          user_id: u1
+    loans:
+      - $alias: l1
+        fields:
+          book_id: b1
+          member_id: m1
+          due_on: "2026-06-01"
+          status: active
+trigger:
+  kind: recurring
+  record: l1
+expect:
+  world:
+    transitioned:
+      loans:
+        - record: l1
+          from: active
+          to: overdue

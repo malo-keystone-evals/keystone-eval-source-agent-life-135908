@@ -1,0 +1,30 @@
+kind: workflow
+name: apply_book_changes
+# STREAMED CHAT DEMO 2 (ADR-0071): the Catalogue Desk's commit step.
+#
+# It writes the change set that `propose_change` staged into agent state — not
+# whatever the model passes in. That is the whole reason the two are separate
+# tools: what gets written is what the conversation agreed to, visible in the
+# transcript above the button, rather than a fresh set of arguments the model
+# assembled at the last second.
+#
+# The write runs as the caller (`run_as: user`), so it goes through the
+# librarian's own UpdatePermission on books. A field outside that permission is
+# silently dropped by the model store — so this tool reads the record back and
+# reports what actually landed, rather than claiming success for a write that
+# may have been partly discarded.
+description: >-
+  Apply the changes staged by propose_change to this book. Call it only after
+  the user has explicitly confirmed them. Takes no arguments — it applies
+  exactly what was staged, nothing more.
+input:
+  kind: object
+  required: true
+  properties: {}
+output:
+  kind: object
+  required: true
+  properties:
+    message:
+      kind: string
+      required: true

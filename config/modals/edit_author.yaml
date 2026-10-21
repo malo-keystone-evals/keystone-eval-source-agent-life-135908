@@ -1,0 +1,16 @@
+# The simplest modal shape: a plain `form` whose single `record_fields` block
+# renders every author property the current user may edit.
+version: 3
+name: edit_author
+icon_id: fa/solid/user-pen
+description: Create a new author or edit an existing one.
+content:
+  kind: form
+  blocks:
+    - kind: record_fields
+      properties:
+        - "*"
+subject:
+  kind: record
+  model_name: authors
+  initial_status: active

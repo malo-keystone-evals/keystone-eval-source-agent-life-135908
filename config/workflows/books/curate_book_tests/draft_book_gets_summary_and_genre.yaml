@@ -1,0 +1,52 @@
+# AGENTIC DEMO (ADR-0063): canned `llm_turns` stand in for the model exactly
+# as the canned External Response stands in for Open Library — the case runs
+# offline and deterministic. The scripted turn ends through the synthesized
+# `output` tool (the node's structured_output terminal). The book's id is not
+# in it: the save reads it from the Item Context.
+version: 3
+name: draft_book_gets_summary_and_genre
+description: Curating a draft book writes the model's distilled summary + genre onto it.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: admin@example.com
+    authors:
+      - $alias: a1
+        fields:
+          name: Ursula K. Le Guin
+    books:
+      - $alias: b1
+        fields:
+          title: The Dispossessed
+          author_id: a1
+          status: draft
+external:
+  lookup:
+    docs:
+      - title: The Dispossessed
+        author_name: [Ursula K. Le Guin]
+        first_publish_year: 1974
+        subject: [Science fiction, Anarchism, Utopias]
+llm_turns:
+  curate:
+    - tool_calls:
+        - name: output
+          args:
+            value:
+              summary: "An ambiguous utopia: the physicist Shevek travels between the anarchist moon Anarres and its capitalist mother world, testing whether walls between societies can come down."
+              genre: science_fiction
+trigger:
+  kind: on_enter
+  record: b1
+  status:
+    from: draft
+    to: published
+expect:
+  world:
+    updated:
+      books:
+        - record: b1
+          changes:
+            genre: science_fiction

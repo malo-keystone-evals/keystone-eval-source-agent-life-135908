@@ -1,0 +1,25 @@
+nodes:
+  check:
+    x: 390.0
+    "y": 330.0
+  entry:
+    x: 120.0
+    "y": 330.0
+  lookup:
+    x: 660.0
+    "y": 210.0
+  missing:
+    x: 1050.0
+    "y": 120.0
+  not_an_isbn:
+    x: 660.0
+    "y": 420.0
+  ok:
+    x: 1320.0
+    "y": 330.0
+  save:
+    x: 1050.0
+    "y": 330.0
+  upstream_failed:
+    x: 120.0
+    "y": 120.0

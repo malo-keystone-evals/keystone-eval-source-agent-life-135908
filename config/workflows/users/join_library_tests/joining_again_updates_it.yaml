@@ -1,0 +1,36 @@
+# The upsert's second half: the user already has a membership, so the run
+# updates it in place — no second row, no unique-index failure.
+version: 3
+name: joining_again_updates_it
+description: Joining again updates the existing membership instead of creating a second one.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: alice@example.com
+          first_name: Alice
+          last_name: Reader
+          status: active
+    members:
+      - $alias: m1
+        fields:
+          user_id: u1
+          display_name: Alice
+          membership_tier: bronze
+          status: active
+trigger:
+  kind: manual
+  record: u1
+  user_input:
+    display_name: Alice R.
+    membership_tier: gold
+expect:
+  strict: true
+  world:
+    updated:
+      members:
+        - record: m1
+          changes:
+            display_name: Alice R.
+            membership_tier: gold

@@ -1,0 +1,10 @@
+nodes:
+  entry:
+    x: 120.0
+    "y": 120.0
+  make_slug:
+    x: 390.0
+    "y": 120.0
+  save_slug:
+    x: 660.0
+    "y": 120.0

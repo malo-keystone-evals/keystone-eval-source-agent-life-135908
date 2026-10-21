@@ -1,0 +1,44 @@
+# The other branch: a loan still within its due date is left untouched by the
+# sweep (the connection filter rejects it). `strict` fails the test if the run
+# changed anything at all.
+#
+# `due_on` is load-bearing twice over: after `now` so the filter rejects it, and
+# within sixty days of it so the loan satisfies `loan_term_within_limit`. A
+# backdrop record enters `active` the same way any other save does, so the RAM
+# store checks the spec's [[Invariant]]s over it exactly as the trigger would.
+version: 3
+name: current_loan_stays_active
+description: A loan not yet due is not transitioned.
+now: 2026-07-23T00:00:00Z
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: bob@example.com
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+    members:
+      - $alias: m1
+        fields:
+          display_name: Bob
+          user_id: u1
+    loans:
+      - $alias: l1
+        fields:
+          book_id: b1
+          member_id: m1
+          due_on: "2026-08-20"
+          status: active
+trigger:
+  kind: recurring
+  record: l1
+expect:
+  strict: true

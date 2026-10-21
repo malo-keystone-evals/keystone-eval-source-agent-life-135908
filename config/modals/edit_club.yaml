@@ -1,0 +1,78 @@
+# The club form shows a `branch` block over the `meeting_format` union: a
+# `variant_select_field` picks the variant, and the branch reveals only that
+# variant's fields. Field path_keys inside a branch variant are relative to the
+# branched value.
+#
+# The selector must be a `variant_select_field` pointed at the union itself, not
+# a `select_field` on `properties.meeting_format.kind`: a plain select writes the
+# `kind` string in place and leaves the previous variant's fields behind, so the
+# saved value carries keys the new variant doesn't declare and the server rejects
+# it. `variant_select_field` rebuilds the value from the chosen variant's
+# defaults instead (see `unionVariantValueOnSwitch`).
+version: 3
+name: edit_club
+icon_id: fa/regular/users-rectangle
+description: Create or edit a reading club.
+content:
+  kind: form
+  blocks:
+    - kind: group
+      name: about
+      title: About
+      blocks:
+        - kind: text_field
+          label: Name
+          path_key: properties.name
+        - kind: multiline_text_field
+          label: Description
+          path_key: properties.description
+        # The club's logo, printed in the header of its event worksheets
+        # (ADR-0094). An ordinary upload: the client stores only the returned
+        # id and the server attaches the file when the club saves (ADR-0064).
+        # The document then reads it as a record image, addressed by model,
+        # record id and property rather than by a bare file id (D12).
+        - kind: file_upload_field
+          label: Club logo
+          path_key: properties.logo_file_id
+          accept: image/*
+    - kind: side_by_side
+      primary:
+        kind: id_search_field
+        label: Current book
+        path_key: properties.current_book_id
+        model_name: books
+      secondary:
+        kind: number_field
+        label: Capacity
+        path_key: properties.capacity
+    - kind: variant_select_field
+      label: Meeting format
+      path_key: properties.meeting_format
+      itemset_name: meeting_formats
+    - kind: branch
+      path_key: properties.meeting_format
+      variants:
+        in_person:
+          blocks:
+            - kind: text_field
+              label: Location
+              path_key: location
+        online:
+          blocks:
+            - kind: text_field
+              label: Video link
+              path_key: url
+              format: url
+        hybrid:
+          blocks:
+            - kind: text_field
+              label: Location
+              path_key: location
+            - kind: text_field
+              label: Video link
+              path_key: url
+              format: url
+subject:
+  kind: record
+  model_name: clubs
+  initial_status: active

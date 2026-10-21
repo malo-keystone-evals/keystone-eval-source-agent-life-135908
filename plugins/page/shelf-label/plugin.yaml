@@ -1,0 +1,10 @@
+kind: page
+framework: solid
+name: shelf-label
+# Mounted as a tab on the book record page (config/pages/book_page.yaml), so it
+# binds to a single `books` record delivered as PageProps.subject. Solid is
+# supplied by the framework adapter — no explicit npm dependencies needed. This
+# is the Solid counterpart to the React `reading-time` plugin: the two exercise
+# both framework paths of `keystone-dev plugin build` end to end.
+input:
+  subject_model: books

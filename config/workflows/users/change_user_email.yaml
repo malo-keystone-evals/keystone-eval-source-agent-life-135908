@@ -1,0 +1,70 @@
+version: 3
+run_as: user
+trigger:
+  kind: manual
+  model_name: users
+  status:
+    - active
+    - invited
+  user_input_schema:
+    kind: object
+    required: true
+    properties:
+      email:
+        kind: string
+        required: true
+        format: email
+        description: The address to move the account onto.
+description: 'Move a user''s account onto a different address: an invited account is re-invited there, and anybody else is emailed the link that proves it before their sign-in address changes.'
+nodes:
+  - id: retarget
+    title: Retarget the account and mint the link
+    action:
+      kind: change_user_email
+  - id: reinvite
+    title: Re-send the invitation to the corrected address
+    action:
+      kind: send_email
+      template: invite
+  - id: confirm
+    title: Email the confirmation link
+    action:
+      kind: send_email
+      template: account_email_change
+connections:
+  - from_id: entry
+    to_id: retarget
+    filters: []
+    transform:
+      steps:
+        - kind: copy
+          from: ".id"
+          to: ".id"
+        - kind: copy
+          from: '.user_input.get("email")'
+          to: ".email"
+  - from_id: retarget
+    to_id: reinvite
+    filters:
+      - filter_selector: ".was_invited"
+    transform:
+      steps:
+        - kind: copy
+          from: ".email"
+          to: ".to"
+        - kind: copy
+          from: object("accept_url", .accept_url)
+          to: ".params"
+    label: was only invited
+  - from_id: retarget
+    to_id: confirm
+    transform:
+      steps:
+        - kind: copy
+          from: ".email"
+          to: ".to"
+        - kind: copy
+          from: object("change_url", .change_url)
+          to: ".params"
+    else: true
+    label: already signed up

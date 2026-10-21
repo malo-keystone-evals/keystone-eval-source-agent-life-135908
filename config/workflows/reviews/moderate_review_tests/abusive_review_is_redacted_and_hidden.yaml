@@ -1,0 +1,79 @@
+# The flagged branch, end to end: the classifier routes to the stateful
+# moderation agent, whose script exercises every tool kind — the Easel state
+# tool (uuid4 note ids, guard satisfied), the redact_review PLUGIN tool (real
+# QuickJS updating the review through the keystone bridge, flipping the
+# agent's `redacted` state via its set_state return), and the terminal
+# `submit`, whose args route the review into `hidden`.
+version: 3
+name: abusive_review_is_redacted_and_hidden
+description: An abusive review is noted, redacted in place, and transitioned to hidden.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: bob@example.com
+    authors:
+      - $alias: a1
+        fields:
+          name: Frank Herbert
+    books:
+      - $alias: b1
+        fields:
+          title: Dune
+          author_id: a1
+          status: published
+    members:
+      - $alias: m1
+        fields:
+          display_name: Bob Bookworm
+          user_id: u1
+    reviews:
+      - $alias: r1
+        fields:
+          book_id: b1
+          member_id: m1
+          rating: 1
+          headline: The librarian is an idiot
+          body: Whoever recommended this garbage should be fired.
+          status: published
+llm_turns:
+  classify:
+    - tool_calls:
+        - name: output
+          args:
+            value:
+              category: abuse
+              reason: Insults directed at staff.
+  moderate:
+    - tool_calls:
+        - name: log_note
+          args:
+            note: Personal attack on staff — clear abuse, hiding it.
+    - tool_calls:
+        - name: redact_review
+          args:
+            review_id: r1
+            notice: This review was removed by moderation.
+    - tool_calls:
+        - name: submit
+          args:
+            review_id: r1
+            action: hide
+            reason: Abusive content directed at staff.
+trigger:
+  kind: on_create
+  record: r1
+expect:
+  world:
+    updated:
+      reviews:
+        - record: r1
+          changes:
+            headline: "[redacted by moderation]"
+            body: This review was removed by moderation.
+    transitioned:
+      reviews:
+        - record: r1
+          from: published
+          to: hidden

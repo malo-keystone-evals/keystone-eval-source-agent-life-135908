@@ -1,0 +1,18 @@
+ALTER TABLE inbound_auths DROP CONSTRAINT IF EXISTS inbound_auths__fk_f4dh8jcckz;
+ALTER TABLE inbound_auths DROP CONSTRAINT IF EXISTS inbound_auths__fk_1bq8hp7lup6;
+ALTER TABLE inbound_auths_lifecycles DROP CONSTRAINT IF EXISTS inbound_auths_lifecycles__fk_mfbsjvc1ah;
+ALTER TABLE inbound_auths_lifecycles DROP CONSTRAINT IF EXISTS inbound_auths_lifecycles__fk_f4dh8jcckz;
+DROP INDEX IF EXISTS inbound_auths__idx_b_jeophq1lin;
+DROP INDEX IF EXISTS inbound_auths__idx_nrcbxny9wa;
+DROP INDEX IF EXISTS inbound_auths__idx_s1gk7xkfhp;
+DROP INDEX IF EXISTS inbound_auths__idx_1vxk7frens6;
+DROP INDEX IF EXISTS inbound_auths__idx_505akd4e4a;
+DROP INDEX IF EXISTS inbound_auths_lifecycles__idx_nrcbxny9wa;
+DROP INDEX IF EXISTS inbound_auths_lifecycles__idx_2kpc90uh14;
+DROP INDEX IF EXISTS inbound_auths_lifecycles__idx_f4dh8jcckz;
+DROP INDEX IF EXISTS inbound_auths_lifecycles__idx_s1gk7xkfhp;
+DROP TRIGGER IF EXISTS inbound_auths__tg_a_bns6sg14do ON public.inbound_auths;
+DROP FUNCTION IF EXISTS public.inbound_auths__tg_a_bns6sg14do();
+DROP TABLE inbound_auths;
+DROP TABLE inbound_auths_lifecycles;
+DROP TYPE IF EXISTS inbound_auths_status;

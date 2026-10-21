@@ -1,0 +1,43 @@
+nodes:
+  activate:
+    x: 930.0
+    "y": 120.0
+  alert_desk:
+    x: 120.0
+    "y": 510.0
+  audit_orphan:
+    x: 390.0
+    "y": 510.0
+  classify_failure:
+    x: 120.0
+    "y": 1500.0
+  contact:
+    x: 660.0
+    "y": 120.0
+  entry:
+    x: 120.0
+    "y": 120.0
+  load_book:
+    x: 390.0
+    "y": 120.0
+  log_outage:
+    x: 660.0
+    "y": 600.0
+  page_failure:
+    x: 390.0
+    "y": 1410.0
+  page_outage:
+    x: 390.0
+    "y": 510.0
+  queue_receipt:
+    x: 390.0
+    "y": 720.0
+  send_receipt:
+    x: 1200.0
+    "y": 120.0
+  tell_member:
+    x: 390.0
+    "y": 1620.0
+  which_outage:
+    x: 120.0
+    "y": 600.0

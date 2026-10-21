@@ -1,0 +1,33 @@
+# The switch's named case: the ISBN is not 10 or 13 digits, so nothing is
+# called and the endpoint
+# answers 422 with the reason.
+version: 3
+name: a_malformed_isbn_is_refused
+description: A book whose ISBN is not 10 or 13 digits is refused with a 422 before ISBNdb is called.
+backdrop:
+  records:
+    users:
+      - $alias: u1
+        fields:
+          email: admin@example.com
+    authors:
+      - $alias: a1
+        fields:
+          name: Ursula K. Le Guin
+    books:
+      - $alias: b1
+        fields:
+          title: The Dispossessed
+          author_id: a1
+          status: published
+          isbn: not-an-isbn
+trigger:
+  kind: endpoint
+  record: b1
+  input: {}
+expect:
+  strict: true
+  response:
+    code: 422
+    body:
+      error: This book has no ISBN-10 or ISBN-13 to look up

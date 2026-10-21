@@ -1,0 +1,16 @@
+.shelf-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem 0;
+}
+
+.shelf-label__title {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.shelf-label__count {
+  color: #92400e;
+  font-size: 0.8rem;
+}
