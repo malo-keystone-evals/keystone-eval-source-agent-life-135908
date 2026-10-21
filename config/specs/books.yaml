@@ -79,6 +79,7 @@ policies:
           - title
           - author_id
           - summary
+          - translator
           - isbn
           - genre
           - page_count
@@ -98,6 +99,7 @@ policies:
           - title
           - author_id
           - summary
+          - translator
           - isbn
           - genre
           - page_count
@@ -178,6 +180,7 @@ policies:
           - author_id
           - author_name
           - summary
+          - translator
           - isbn
           - genre
           - page_count
@@ -284,6 +287,13 @@ properties:
     schema:
       kind: string
     filterable: false
+    storage:
+      kind: standard
+      storage_type: text
+  - name: translator
+    description: The person who translated this book, if it is a translation.
+    schema:
+      kind: string
     storage:
       kind: standard
       storage_type: text

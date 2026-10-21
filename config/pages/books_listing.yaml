@@ -46,6 +46,14 @@ content:
           decoration: null
           position: null
           renderer: null
+        translator:
+          label: Translator
+          width: 240
+          visibility: null
+          persistent: null
+          decoration: null
+          position: null
+          renderer: null
         buzz:
           label: Buzz
           width: null

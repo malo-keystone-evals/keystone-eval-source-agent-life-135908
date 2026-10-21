@@ -21,6 +21,7 @@ content:
             - author_id
             - co_author_ids
             - summary
+            - translator
         - kind: file_upload_field
           label: Cover image
           path_key: properties.cover_image_id
